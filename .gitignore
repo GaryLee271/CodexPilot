@@ -1,0 +1,58 @@
+# ---- 构建产物 ----
+target/
+/target-*/
+dist/
+build/
+.linux-build/
+apps/codex-plus-manager/src-tauri/gen/
+node_modules/
+*.tsbuildinfo
+
+# 依赖锁定：本项目只用 npm
+pnpm-lock.yaml
+pnpm-workspace.yaml
+
+# ---- Python ----
+__pycache__/
+*.egg-info/
+.venv/
+venv/
+
+# ---- 测试覆盖率 ----
+coverage/
+
+# ---- 本地配置与凭据 ----
+.env
+.env.*
+!.env.example
+tools/codex-wechat/config.local.json
+state/
+.codex_asar_extract/
+.codex_asar_extract_latest/
+
+# ---- 编辑器与系统文件 ----
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# ---- 日志与临时文件 ----
+*.log
+/temp/
+/artifacts/
+.tmp_*/
+.tmp-*
+
+# ---- AI 编码工具的本地目录（各自的工作区，不入库）----
+.claude/
+.superpowers/
+.worktrees/
+.trae/
+.zcode/
+.zcodeignore
+
+# ---- 本地工作区数据：工作记忆、生成素材、草稿 ----
+.workbuddy/
+generated-images/
+work/
+assets/example.json

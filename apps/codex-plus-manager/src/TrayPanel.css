@@ -1,0 +1,75 @@
+/* 托盘快捷面板：固定 380×540 的小窗，页头 + 可滚动内容 + 页脚。
+   正式版里 styles.css 在组件样式之后加载，这里的规则一律以 .tray-panel 开头，权重高过通用规则。 */
+
+html:has(.tray-panel),
+body:has(.tray-panel) {
+  height: 100%;
+  overflow: hidden;
+  background: hsl(var(--background));
+}
+
+.tray-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  color: var(--gw-ink);
+  font-size: 13px;
+  user-select: none;
+}
+
+.tray-panel svg {
+  flex-shrink: 0;
+}
+
+/* ———— 页头 ———— */
+.tray-panel .tp-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px 8px 14px;
+}
+
+.tray-panel .tp-head > img {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+}
+
+/* ———— 内容区 ———— */
+.tray-panel .tp-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 12px 12px;
+  scrollbar-width: thin;
+}
+
+.tray-panel .tp-card {
+  flex-shrink: 0;
+  border: 1px solid var(--gw-line);
+  border-radius: 14px;
+  background: var(--gw-card);
+  box-shadow: 0 1px 2px hsl(var(--shadow-color) / 0.05);
+}
+
+/* 快速打开：三列小方块 */
+.tray-panel .tp-quick {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.tray-panel .tp-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--gw-line);
+}
+
+.tray-panel .tp-foot > span {
+  flex: 1;
+}

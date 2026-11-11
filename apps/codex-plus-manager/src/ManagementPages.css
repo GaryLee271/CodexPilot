@@ -1,0 +1,13 @@
+.mg-icon-button{font:inherit;display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid hsl(var(--border));background:transparent;color:hsl(var(--foreground));border-radius:7px;height:30px;padding:0 10px;cursor:pointer}
+.mg-icon-button:hover{background:hsl(var(--accent))}
+.mg-icon-button:disabled{opacity:.45;cursor:not-allowed}
+.mg-icon-button{width:30px;padding:0;border-color:transparent}
+.mg-menu-wrap{position:relative}
+.mg-menu{position:absolute;right:0;top:34px;z-index:30;min-width:180px;padding:5px;background:hsl(var(--popover));border:1px solid hsl(var(--border));border-radius:8px;box-shadow:var(--shadow-lg)}
+.mg-menu button{display:block;width:100%;padding:7px;border:0;background:transparent;text-align:left;color:inherit;font:inherit;border-radius:5px}
+.mg-menu button:not(:disabled):hover{background:hsl(var(--accent))}
+.mg-icon-button{border-radius:9px}
+.mg-menu .mg-menu-label{ padding:6px 7px 3px; font-size:11px; color:hsl(var(--muted-foreground)); }
+.mg-menu button[aria-checked="true"]::after{ content:"✓"; float:right; color:hsl(var(--brand-accent)); }
+.mg-menu button:disabled{opacity:.45;cursor:not-allowed}
+.mg-menu button.mg-danger{color:hsl(var(--destructive))}

@@ -1,0 +1,22 @@
+/* 拓展页面共用的 Graphite 布局：类名统一 tp- 前缀，页面专属的用各自前缀。
+   页面标题在外壳顶栏，页面操作通过 TopbarActions 放进顶栏，这里只排内容。 */
+
+.tp-page {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+}
+
+.tp-card {
+  min-width: 0;
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  background: hsl(var(--card));
+}
+
+.tp-foot {
+  margin: 4px 2px 0;
+  color: hsl(var(--muted-foreground) / 0.8);
+  font-size: 11.5px;
+}

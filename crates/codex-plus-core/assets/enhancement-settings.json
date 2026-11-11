@@ -1,0 +1,128 @@
+{
+  "version": 1,
+  "groups": [
+    {
+      "id": "core",
+      "title": "常规"
+    },
+    {
+      "id": "plugins",
+      "title": "模型与服务",
+      "description": "管理原生模型与服务档位相关增强。",
+      "managerTab": "general"
+    },
+    {
+      "id": "chat",
+      "title": "对话与输入",
+      "description": "管理本地对话标签与 API 模式项目分区。",
+      "managerTab": "general"
+    }
+  ],
+  "items": [
+    {
+      "key": "enhancementsEnabled",
+      "group": "core",
+      "control": "bool",
+      "title": "启用增强",
+      "description": "关闭后暂停增强，保留现有设置。",
+      "masterGated": false,
+      "surfaces": [
+        "manager",
+        "codex"
+      ]
+    },
+    {
+      "key": "codexAppNativeBrowserRequireIdentification",
+      "builtin": "native-browser-identification",
+      "group": "plugins",
+      "control": "bool",
+      "title": "原生 Edge / Chrome 请求标识兼容（实验）",
+      "managerSummary": "仅 Windows Edge / Chrome；下次启动 Codex 时应用兼容设置。",
+      "description": "此兼容补丁仅适配 Windows 上的 Edge / Chrome；下次启动 Codex 时应用。扩展可能保留请求标识设置。",
+      "platforms": [
+        "windows"
+      ],
+      "surfaces": [
+        "manager"
+      ],
+      "restart": true
+    },
+    {
+      "key": "codexAppNativeFastUnlock",
+      "builtin": "native-fast-unlock",
+      "group": "plugins",
+      "control": "bool",
+      "title": "原生 Fast 强制解锁",
+      "managerSummary": "为纯 API Key 模式恢复 Fast 开关，实际支持与计费由供应商决定。",
+      "description": "纯 API Key 模式恢复原生 Fast 开关；重新启动 Codex 后生效，实际支持与计费由供应商决定。",
+      "surfaces": [
+        "manager",
+        "codex"
+      ],
+      "restart": true
+    },
+    {
+      "key": "codexAppNativePredictions",
+      "builtin": "native-predictions",
+      "group": "plugins",
+      "control": "bool",
+      "title": "原生输入预测（实验）",
+      "managerSummary": "仅本机 API 对话，按 Tab 接受草稿；预测会额外消耗 API 额度。",
+      "description": "实验功能，默认关闭。在 Codex 原生输入框显示下一句灰字预测，按 Tab 接受为可编辑草稿，不会自动发送。仅对使用 API Key / 自定义供应商的本机对话生效；每个回合结束都会用当前供应商额外请求一次，消耗该供应商额度。ChatGPT 登录与远程 / SSH / 云端对话保持原样。重新启动 Codex 后生效。",
+      "surfaces": [
+        "manager",
+        "codex"
+      ],
+      "restart": true
+    },
+    {
+      "key": "codexAppNativePredictionsModel",
+      "parent": "native-predictions",
+      "group": "plugins",
+      "control": "model",
+      "title": "预测输入模型",
+      "managerSummary": "留空跟随当前对话，始终使用对话原供应商。",
+      "description": "留空跟随当前对话模型。手动指定时根据最近对话文本生成预测，仅覆盖输入预测使用的模型，仍使用当前对话原供应商，不改变主对话模型。可选择候选或自行填写。",
+      "placeholder": "跟随当前对话",
+      "surfaces": [
+        "manager",
+        "codex"
+      ]
+    },
+    {
+      "key": "codexAppConversationTabs",
+      "builtin": "conversation-tabs",
+      "group": "chat",
+      "control": "bool",
+      "title": "对话标签栏",
+      "managerSummary": "像浏览器一样切换本地对话，支持拖动排序并记住标签。",
+      "description": "默认关闭，开启后立即生效。在 Codex 主窗口上方显示本地对话标签，支持拖动排序、快捷键切换和右键菜单；标签与顺序保存在本机，关闭标签不会删除或归档对话。无需 CodexHost，暂不支持远程、云端和普通 ChatGPT 对话。",
+      "surfaces": ["manager", "codex"]
+    },
+    {
+      "key": "codexAppConversationList",
+      "builtin": "conversation-list",
+      "group": "chat",
+      "control": "bool",
+      "title": "跨项目会话列表",
+      "managerSummary": "在侧栏内按最近更新时间统一列出所有会话，并标出所属项目。",
+      "description": "默认关闭，开启后立即生效。在 Codex 侧栏顶部的搜索按钮右侧新增一个小图标入口，点开后侧栏直接切换为按最近更新时间倒序排列的跨项目会话列表，再点一次切回原生列表；每条显示会话标题与状态，下方显示项目图标、项目名与 git 当前分支，行样式与原生会话列表一致。子代理等自动会话不进列表。项目名来自本机 Codex 项目索引，未归属项目的会话显示工作目录名。点击条目切换会话；开启对话标签栏时也会顺手加入标签。",
+      "surfaces": ["manager", "codex"]
+    },
+    {
+      "key": "codexAppNativeProjectSections",
+      "builtin": "native-project-sections",
+      "group": "chat",
+      "control": "bool",
+      "title": "API 模式项目分区（实验）",
+      "managerSummary": "在本机 API 模式下整理项目与聊天，数据独立保存在本地，不与账号同步。",
+      "description": "默认关闭。为本机 API Key / 自定义供应商模式开启原生侧栏分区，可创建、重命名并整理项目与聊天。分区使用独立本地存储，不关联账号或同步数据；关闭后保留数据。重新启动 Codex 后生效。",
+      "surfaces": [
+        "manager",
+        "codex"
+      ],
+      "restart": true
+    }
+  ],
+  "builtins": []
+}
