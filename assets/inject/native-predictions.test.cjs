@@ -23,6 +23,8 @@ const currentFixtures = {
   "initialize-app-host-services": async function(e,t,n,a){let s=H.appServices?.cumberbatch;if(!(null==s||null!=n.automationKind||(0,I.remote)(n.hostId))&&a()&&(0,J.check)(e,"4290031608"))try{let i={};try{let o=(0,R.resource)(i,await t.getCachedConversationMetadata(n.conversationId),!1);if(!a()||!(0,J.check)(e,"4290031608")||o?.streamRole?.role!=="owner"||o.ephemeral||o.latestTurnId!==n.turnId)return;let l={hostId:n.hostId,threadId:n.conversationId,latestTurnId:n.turnId},u=e.get("account"),d=e.get("user"),c={...l,generationTrigger:"live"},p=(0,R.resource)(i,new T.Callback(t=>{a()&&(0,C.ineligible)({scope:e,target:c,ineligibility:t})}),!1),h=0,f=await (0,U.unwrap)(s.requestUserMessagePrediction(c,p));null!=f&&a()&&(0,C.store)({scope:e,target:c,prediction:f})}finally{R.dispose(i)}}catch(error){C.error(error)}}.toString(),
   "general-settings": function settings(F,H,G,N,D,C){let f=(0,F.check)("4290031608"),m=H.appServices.cumberbatch,b=1,y=2,t,a;t=["cumberbatch-availability",b,y];a=f?async e=>{let{signal:t}=e;if(null!=m)return m.isEnabledByRemoteConfig();return false}:D.disabled;let data=true;return!f||!data?null:({label:"settings.general.messagePredictions.label",query:a,onChange:e=>{(0,G.write)(N,D,e),(0,C.preference)({scope:N,globallyEnabled:e})}})}.toString(),
 };
+// 内联查询与资源释放形状；手写最小夹具，不依赖 chunk 名或压缩变量名。
+const resourceCatchUp = function catchUp(A,S,j,R,U,V,W,C,D){let M=A.appServices.cumberbatch,b=1;return{queryKey:[b,j],queryFn:null==j||null==M?R.disabled:async({signal:e})=>{let t={stack:[],error:void 0,hasError:!1};try{let delay=1;await Promise.resolve(delay);let o={...j,generationTrigger:"catch_up"},a=(0,D.resource)(t,new U.Callback(e=>{(0,C.ineligible)({scope:S,target:o,ineligibility:e})}),!1);return await (0,V.abort)((0,W.unwrap)(M.requestUserMessagePrediction(o,a)),e).then(e=>(null!=e&&(0,C.store)({scope:S,target:o,prediction:e}),e))}catch(e){t.error=e,t.hasError=!0}finally{(0,D.dispose)(t)}}}}.toString();
 const urls = {
   "app-initial": "app://-/assets/app-initial-fixture.js",
   "composer-content": "app://-/assets/composer-content-fixture.js",
@@ -103,6 +105,28 @@ function runRewriterTests() {
     assert.equal(api.plan(result.patchedSource, urls[name], name).ok, false);
     assert.equal(api.plan(`${source}\n${source}`, urls[name], name).diagnostics.reason, "ambiguous-structure");
     assert.equal(api.plan(`${source}\n${fixtures[name]}`, urls[name], name).diagnostics.reason, "ambiguous-structure", "新旧结构同时存在时不可任选");
+  }
+  const name = "composer-content";
+  const result = api.transform(resourceCatchUp, urls[name], name);
+  assert.equal(result.ok, true, JSON.stringify(result.diagnostics));
+  new vm.Script(`(${result.patchedSource})`);
+  assert.equal(api.plan(result.patchedSource, urls[name], name).ok, false);
+  for (const other of [resourceCatchUp, fixtures[name], currentFixtures[name]]) {
+    assert.equal(api.plan(`${resourceCatchUp}\n${other}`, urls[name], name).diagnostics.reason, "ambiguous-structure");
+  }
+  const renamed = resourceCatchUp.replace(/\b(M|S|j|e|t|o|a)\b/g, "$1_renamed");
+  assert.equal(api.plan(renamed, urls[name], name).ok, true, "资源查询按绑定关系匹配");
+  for (const broken of [
+    resourceCatchUp.replace("Prediction(o,a)", "Prediction(j,a)"),
+    resourceCatchUp.replace("Prediction(o,a)", "Prediction(o,b)"),
+    resourceCatchUp.replace(")),e).then", ")),b).then"),
+    resourceCatchUp.replace("target:o", "target:j"),
+    resourceCatchUp.replace("resource)(t,", "resource)(b,"),
+    resourceCatchUp.replace('generationTrigger:"catch_up"', 'generationTrigger:"live"'),
+  ]) {
+    const rejected = api.transform(broken, urls[name], name);
+    assert.equal(rejected.ok, false, "引用不一致时保留原模块");
+    assert.equal(rejected.patchedSource, broken);
   }
 }
 
@@ -571,6 +595,47 @@ async function runCurrentCallSiteTests() {
   assert.equal(render(), null, "关闭功能后恢复新版原生设置门控");
 }
 
+async function runResourceCallSiteTests() {
+  for (const runtimePresent of [true, false]) {
+    for (const fail of [true, false]) {
+      const { api, window, context } = harness();
+      const source = api.transform(resourceCatchUp, urls["composer-content"], "composer-content").patchedSource;
+      const queryFactory = vm.runInContext(`(${source})`, context);
+      const calls = [], stored = [], ineligible = [], disposed = [];
+      const signal = new AbortController().signal;
+      const failure = new Error("sample failed");
+      const invoke = (...args) => {
+        calls.push(args);
+        args[2]?.report("fixture");
+        return fail ? Promise.reject(failure) : Promise.resolve({ text: "继续" });
+      };
+      const service = { requestUserMessagePrediction: (target, callback) => invoke(service, target, callback, signal) };
+      if (runtimePresent) {
+        window.__codexPlusNativePredictions.request = invoke;
+        service.requestUserMessagePrediction = () => assert.fail("不能重复调用原生服务");
+      } else delete window.__codexPlusNativePredictions;
+      const resources = {
+        resource: (stack, callback) => { stack.stack.push(callback); return callback; },
+        dispose: (stack) => { disposed.push(stack.stack.length); if (stack.hasError) throw stack.error; },
+      };
+      const query = queryFactory({ appServices: { cumberbatch: service } }, "scope", target(), {},
+        { Callback: class { constructor(report) { this.report = report; } } },
+        { abort: (value, actualSignal) => { assert.equal(actualSignal, signal); return value; } },
+        { unwrap: (value) => value },
+        { store: (value) => stored.push(value), ineligible: (value) => ineligible.push(value) }, resources).queryFn;
+      if (fail) await assert.rejects(query({ signal }), (error) => error === failure);
+      else assert.equal((await query({ signal })).text, "继续");
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0][0], service);
+      assert.equal(calls[0][1].generationTrigger, "catch_up");
+      assert.equal(calls[0][3], signal);
+      assert.equal(ineligible[0].target, calls[0][1]);
+      assert.equal(stored.length, fail ? 0 : 1);
+      assert.deepEqual(disposed, [1], "成功与失败都保留原生资源释放");
+    }
+  }
+}
+
 function channelHarness(settings = enabled, fastSettings = null) {
   const storage = new Map();
   const events = [];
@@ -817,6 +882,7 @@ async function runNativePredictionsTests() {
   await runSelectedModelTests();
   await runPatchedCallSiteTests();
   await runCurrentCallSiteTests();
+  await runResourceCallSiteTests();
   await runChannelTests();
   const real = await runRealBundleCheck();
   return `Native predictions rewriter, gates, thread/sample adapter, cancel/dedupe/deadline and module channel passed${real ? `; real bundle ${JSON.stringify(real)}` : ""}`;

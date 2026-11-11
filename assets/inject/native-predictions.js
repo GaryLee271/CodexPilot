@@ -210,6 +210,16 @@
   };
   for (const [target, pattern] of Object.entries(currentPatterns)) structures[target][0].patterns = [structures[target][0].pattern, pattern];
 
+  // 26.1106 把 catch-up 内联到 queryFn，并用资源栈管理回调的释放。
+  // 单独识别这一形状，仍校验目标、回调、取消信号的引用，只替换服务调用。
+  structures["composer-content"][0].patterns.push([
+    `(?<service>${id})=${id}\\.appServices\\.cumberbatch,`,
+    `[\\s\\S]{0,500}?queryFn:null==${id}\\|\\|null==\\k<service>\\?${id}\\.${id}:async\\(\\{signal:(?<signal>${id})\\}\\)=>\\{`,
+    `let (?<resources>${id})=\\{stack:\\[\\],error:void 0,hasError:!1\\};try\\{`,
+    `[\\s\\S]{0,500}?let (?<target>${id})=\\{\\.\\.\\.${id},generationTrigger:"catch_up"\\},(?<callback>${id})=${moduleCall}\\(\\k<resources>,new ${id}\\.${id}\\(${id}=>\\{${moduleCall}\\(\\{scope:${id},target:\\k<target>,ineligibility:${id}\\}\\)\\}\\),!1\\);`,
+    `return await ${moduleCall}\\(${moduleCall}\\((?<call>\\k<service>\\.requestUserMessagePrediction\\(\\k<target>,\\k<callback>\\))\\),\\k<signal>\\)`,
+  ].join(""));
+
   const targets = [
     { name: "app-initial", prefix: "app-initial-", unique: true, entry: true, anchors: ["4290031608", "cumberbatch-has-accepted-prediction-1"] },
     // 26.1027 的输入框由 app-runtime → asb-conversation-page 懒加载；旧版仍经 app-initial 进入。
