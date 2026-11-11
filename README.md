@@ -2,6 +2,10 @@
 
 Codex Pilot 是面向 Codex 桌面端的轻量增强管理器，只服务 Codex。基于 [CodexPlusPlus](https://github.com/BigPizzaV3/CodexPlusPlus)（AGPL-3.0-only）精简而来，现独立维护；非 OpenAI 官方产品，与 OpenAI 无关联。许可与致谢见 [NOTICE.md](NOTICE.md)。
 
+<p align="center">
+  <img src="assets/screenshots/enhancements-light.png" alt="增强页：Codex 连接状态与增强开关" width="860">
+</p>
+
 ## 功能
 
 - Codex 启动、注入与自动接管。
@@ -13,6 +17,18 @@ Codex Pilot 是面向 Codex 桌面端的轻量增强管理器，只服务 Codex�
 上游发布包与本项目精简版本的功能范围不同，本文档描述的是本项目当前范围。
 
 管理器采用窄侧栏：左侧切换“增强 / 设置”，底部垂直排列 Codex 运行按钮。运行状态与增强同屏，连接详情以两张常驻卡片展示；配置、维护和版本更新集中到设置页。
+
+<p align="center">
+  <img src="assets/screenshots/settings.png" alt="设置页" width="860">
+  <br>
+  <sub>设置页：外观与语言、启动与接管、配置维护、版本更新</sub>
+</p>
+
+<p align="center">
+  <img src="assets/screenshots/enhancements-dark.png" alt="深色主题下的增强页" width="860">
+  <br>
+  <sub>深色主题跟随系统外观切换</sub>
+</p>
 
 ## 本地开发与检查
 
