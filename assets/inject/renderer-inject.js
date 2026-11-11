@@ -5413,6 +5413,9 @@
    * 这里把「手动刷新」这一下自动化，并严格限次：
    *   - 只认空壳：`#root` 存在、innerText 为空、且没有 `<main>`。正常的启动画面
    *     渲染几秒内就会长出 `<main>`，所以宽限期足够长即可区分「慢」与「卡死」。
+   *   - 宽限期分两档：注入时页面已经加载完成（`readyState=complete`）却仍是空壳，
+   *     说明文档早就加载完、不是慢启动，等 3s 就刷新；否则保留 20s，避免在慢机器
+   *     上打断真正还在挂载的页面（本机实测正常挂载要 5~14s）。
    *   - 只在主页面做。带 `initialRoute=` 的活动悬浮层与 quick-chat 是独立页面，
    *     它们本来就没有 `<main>`，刷新只会丢上下文。
    *   - 每次加载最多刷一次，且与上次刷新间隔不足冷却时间就不再刷；
@@ -5420,6 +5423,8 @@
    */
   const bootShellRecoveryStorageKey = "codexPlus.bootShellRecoveryAt";
   const bootShellRecoveryGraceMs = 20000;
+  // 注入时就已经是空壳：文档加载完了却一个节点都没渲染，不必再等满 20s。
+  const bootShellRecoveryStuckGraceMs = 3000;
   const bootShellRecoveryCooldownMs = 60000;
   const bootShellRecoveryPollMs = 1000;
 
@@ -5461,12 +5466,16 @@
   function installBootShellRecovery() {
     if (!bootShellRecoveryAppliesHere()) return;
     const startedAt = Date.now();
+    // 文档已经加载完却还是空壳 = 页面卡住而不是慢启动，不必等满 20s。
+    const graceMs = document.readyState === "complete" && bootShellRecoveryStuck()
+      ? bootShellRecoveryStuckGraceMs
+      : bootShellRecoveryGraceMs;
     const timer = window.setInterval(() => {
       if (bootShellRecoverySettled()) {
         window.clearInterval(timer);
         return;
       }
-      if (Date.now() - startedAt < bootShellRecoveryGraceMs) return;
+      if (Date.now() - startedAt < graceMs) return;
       window.clearInterval(timer);
       if (!bootShellRecoveryStuck() || !bootShellRecoveryMayReload()) return;
       try {
@@ -5482,6 +5491,7 @@
       if (typeof sendCodexPlusDiagnostic === "function") {
         sendCodexPlusDiagnostic("boot_shell_recovery_reload", {
           waitedMs: Date.now() - startedAt,
+          graceMs,
           nativeModuleFallback,
         });
       }
