@@ -457,14 +457,6 @@ Codex Pilot 自带的功能都是内置拓展（会话删除、Markdown 导出�
 要在 Codex 自己的脚本之前改页面（改写 Codex 模块、强制语言）时，用写入工具的 `preload` 参数：`{ "scripts": ["preload/patch.js"], "reloadOnLaunch": true }`。脚本在每份新文档最早执行，拿不到 `codexPlus`，只能读 `codexPlusPreload`（`{ id, key, config }`）；改了要重启 Codex。
 要在启动 Codex 之前 / 退出之后做事（改 Codex 的本地状态文件、恢复补丁）或追加启动参数时，用 `launch` 参数：`{ "args": ["--lang=zh-CN"], "before": "launch/before.mjs", "after": "launch/after.mjs" }`，脚本默认导出 `(context) => …`，拿到 `codexHome`、`stateDir`、`appDir`、`config`。顶替 Rust 侧的内置功能（原生 Fast 解锁、强制中文、Work 视图……）就用这两个。
 
-## 在拓展包里带 dsh 插件
-
-用户手上已经有按 dsh（deepseek-harness）插件写法写的插件（`apply(ctx)` 里 `ctx.tools.register`、`ctx.on("tools/pre-execute", …)`
-等），不用改写成拓展：把插件目录（带 `package.json`）作为 `files` 写进包里的一个子目录，`dsh` 参数写这个目录名（如 `"dsh-plugin"`）。
-拓展启用时 Codex Pilot 把它作为 dsh 插件导入运行（工具经 MCP、事件经钩子与网关），停用、删除时一起停用、移除。
-写好后用 `codexpp_extension_list` 看加载状态；dsh 插件的逐行兼容性报告在管理器「拓展 → dsh 插件」里。
-新写的功能优先直接写成拓展，`dsh` 只用于搬用户已有的 dsh 插件。
-
 ## 工具连接断开时
 
 `codexpp_extension_*` 工具报 `Transport closed` 说明拓展服务断开了（通常是 Codex Pilot 刚更新或重启过），这个对话

@@ -1,9 +1,0 @@
-- id: c
-  name: ./say.js
-  config:
-    word: sea
-- id: d
-  name: ./say.js
-  config:
-    word: dee
-    loud: !!js "true"

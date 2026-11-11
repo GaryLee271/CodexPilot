@@ -23,7 +23,6 @@ mod codex_sqlite;
 mod conversation_tabs;
 mod conversation_list;
 mod diagnostic_log;
-mod dsh_plugins;
 mod extension_backend;
 mod extension_codex;
 mod extension_creator;

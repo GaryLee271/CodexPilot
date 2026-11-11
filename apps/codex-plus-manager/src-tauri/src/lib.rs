@@ -77,10 +77,7 @@ fn disable_removed_extension_mcps() {
     };
     let home = codex_plus_core::codex_home::default_codex_home_dir();
     let state_dir = codex_plus_core::paths::default_app_state_dir();
-    for spec in [
-        &codex_plus_core::dsh_plugins::SPEC,
-        &codex_plus_core::extension_creator::SPEC,
-    ] {
+    for spec in [&codex_plus_core::extension_creator::SPEC] {
         // 按归属标记停用，也覆盖旧安装路径、旧名称；转换函数会保留同名的其他 MCP。
         if let Err(error) = codex_plus_core::managed_mcp::disable(spec, &home, &executable, &state_dir) {
             let _ = codex_plus_core::diagnostic_log::append_diagnostic_log(

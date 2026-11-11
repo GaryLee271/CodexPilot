@@ -919,19 +919,6 @@ codexPlus.extension((ctx) => {
 | 改系统提示词、改写模型回复流 | 清单 `gateway.request` / `gateway.response`；只改提示词也可以用 `instructions` |
 | 上游出错时重试或降级 | 清单 `gateway.error` |
 
-已经按 dsh 插件写法写好的插件（`apply(ctx)` 里 `ctx.on("tools/pre-execute", …)`、`ctx.tools.register(…)`、`ctx.commands.register(…)`
-等）不用改写：在管理器「拓展 → dsh 插件」用本地目录导入，或者放进拓展包里、在清单里用 `dsh` 指向它：
-
-```json
-{ "id": "my-kit", "renderer": "renderer.js", "dsh": "dsh-plugin" }
-```
-
-`dsh-plugin/` 是包内一个带 `package.json` 的目录（单个插件或 bundle 都行）。对话造拓展的写入工具同样认 `dsh` 与 `instances`。拓展启用时 Codex Pilot 把它作为 dsh 插件导入
-（id 为 `ext-<拓展 id>`）并生成配套拓展包，拓展停用时一起停用、删除时一起移除；插件目录或拓展版本变了会重新分析。
-包里的 `Service` 子类插件会实例化并提供给同包插件 `inject`（支持行上的 `isolate` 与 `ctx.isolate`）；插件之间的自定义事件
-（`ctx.emit` / `serial` / `waterfall` …）跨包也能收到；包导出的 `./typert` 会自动登记，前端半边用 `ctx.remote.<namespace>.<method>()` 调；
-`ctx.webServer.registerUpgrade` 注册的 WebSocket 经 `/ext/dsh-<插件>/<路径>` 可用（Host 必须是本机回环地址，网页只接受同源）。
-
 ### 拓展间服务
 
 ```js

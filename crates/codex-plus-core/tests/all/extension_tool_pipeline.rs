@@ -42,7 +42,7 @@ fn pipeline_declarations_are_validated_and_summarized() {
 
 #[tokio::test]
 async fn pre_execute_rewrites_or_denies_and_execute_replaces_the_tool() {
-    if codex_plus_core::dsh_plugins::locate_node().is_none() {
+    if codex_plus_core::extension_node::locate_node().is_none() {
         return;
     }
     let temp = tempfile::tempdir().unwrap();
@@ -102,7 +102,7 @@ fn tool_marker(token: &str) -> String {
 
 #[tokio::test]
 async fn post_execute_rewrites_matching_tool_outputs_once() {
-    if codex_plus_core::dsh_plugins::locate_node().is_none() {
+    if codex_plus_core::extension_node::locate_node().is_none() {
         return;
     }
     let temp = tempfile::tempdir().unwrap();

@@ -35,7 +35,7 @@ fn gateway_declarations_are_validated() {
 
 #[tokio::test]
 async fn request_middlewares_chain_in_order_and_failures_keep_the_request() {
-    if codex_plus_core::dsh_plugins::locate_node().is_none() {
+    if codex_plus_core::extension_node::locate_node().is_none() {
         eprintln!("跳过：本机没有 Node");
         return;
     }
@@ -103,7 +103,7 @@ async fn run_filter(manager: &UserScriptManager, chunks: &[&[u8]]) -> Vec<u8> {
 
 #[tokio::test]
 async fn response_middlewares_wrap_the_stream_in_order() {
-    if codex_plus_core::dsh_plugins::locate_node().is_none() {
+    if codex_plus_core::extension_node::locate_node().is_none() {
         return;
     }
     let temp = tempfile::tempdir().unwrap();
@@ -144,7 +144,7 @@ export default async function* (context, next) {
 
 #[tokio::test]
 async fn response_middleware_failures_pass_the_rest_through() {
-    if codex_plus_core::dsh_plugins::locate_node().is_none() {
+    if codex_plus_core::extension_node::locate_node().is_none() {
         return;
     }
     let temp = tempfile::tempdir().unwrap();
@@ -184,7 +184,7 @@ export default async function* (context, next) {
 
 #[tokio::test]
 async fn releasing_a_filter_leaves_a_newer_worker_in_the_slot() {
-    if codex_plus_core::dsh_plugins::locate_node().is_none() {
+    if codex_plus_core::extension_node::locate_node().is_none() {
         return;
     }
     use codex_plus_core::extension_gateway::ResponseFilter;
@@ -226,7 +226,7 @@ async fn middlewares_run_once_when_the_launcher_forwards_to_the_local_gateway() 
 
 #[tokio::test]
 async fn error_middlewares_decide_whether_to_retry() {
-    if codex_plus_core::dsh_plugins::locate_node().is_none() {
+    if codex_plus_core::extension_node::locate_node().is_none() {
         return;
     }
     use codex_plus_core::extension_gateway::{RetryDecision, decide_retry_for};
@@ -278,7 +278,7 @@ fn request_step_counts_tool_results_since_the_last_user_message() {
 
 #[tokio::test]
 async fn request_middlewares_see_the_step_and_can_reject_it() {
-    if codex_plus_core::dsh_plugins::locate_node().is_none() {
+    if codex_plus_core::extension_node::locate_node().is_none() {
         return;
     }
     let temp = tempfile::tempdir().unwrap();
@@ -331,7 +331,7 @@ async fn request_stages_order_and_builtin_replaces() {
     assert_eq!(find("user:b-early")["package"]["gatewayReplaces"], json!(["builtin:local-compaction"]));
     assert_eq!(manager.enabled_gateway_replaces().unwrap(), vec![("b-early".to_string(), "builtin:local-compaction".to_string())]);
 
-    if codex_plus_core::dsh_plugins::locate_node().is_none() {
+    if codex_plus_core::extension_node::locate_node().is_none() {
         eprintln!("跳过：本机没有 Node");
         return;
     }
@@ -381,7 +381,7 @@ fn replaces_accepts_proxy_and_gateway_builtin_segments() {
 #[tokio::test]
 async fn route_middlewares_reorder_candidate_relays() {
     use codex_plus_core::extension_gateway::route_order_with_manager;
-    if codex_plus_core::dsh_plugins::locate_node().is_none() {
+    if codex_plus_core::extension_node::locate_node().is_none() {
         eprintln!("跳过：本机没有 Node");
         return;
     }
@@ -402,7 +402,7 @@ async fn route_middlewares_reorder_candidate_relays() {
 #[tokio::test]
 async fn auth_headers_takeover_gets_the_credential_and_may_set_auth_headers() {
     use codex_plus_core::extension_gateway::{apply_upstream_request_with, extension_headers, EXTENSION_HEADERS};
-    if codex_plus_core::dsh_plugins::locate_node().is_none() {
+    if codex_plus_core::extension_node::locate_node().is_none() {
         eprintln!("跳过：本机没有 Node");
         return;
     }

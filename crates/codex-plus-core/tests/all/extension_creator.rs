@@ -348,7 +348,7 @@ if (/\.(innerHTML|outerHTML|textContent)\s*=[^=]|\.remove\(|\.append|setAttribut
 
 #[tokio::test]
 async fn extension_declared_tools_are_listed_and_callable() {
-    if codex_plus_core::dsh_plugins::locate_node().is_none() {
+    if codex_plus_core::extension_node::locate_node().is_none() {
         eprintln!("跳过：本机没有 Node");
         return;
     }
@@ -577,7 +577,7 @@ async fn extension_config_defaults_validation_and_delivery() {
     );
 
     // 工具脚本从 context.config 读到同一份。
-    if codex_plus_core::dsh_plugins::locate_node().is_some() {
+    if codex_plus_core::extension_node::locate_node().is_some() {
         let response = handle_request(&creator, json!({"jsonrpc": "2.0", "id": 21, "method": "tools/call", "params": {"name": "pomo__minutes", "arguments": {}}})).await.unwrap();
         assert_eq!(response["result"]["content"][0]["text"], "40|green");
     }

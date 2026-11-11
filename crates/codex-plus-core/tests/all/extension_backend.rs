@@ -42,7 +42,7 @@ fn backend_declarations_are_validated() {
 
 #[tokio::test]
 async fn backend_keeps_state_emits_events_and_stops() {
-    if codex_plus_core::dsh_plugins::locate_node().is_none() {
+    if codex_plus_core::extension_node::locate_node().is_none() {
         eprintln!("跳过：本机没有 Node");
         return;
     }
@@ -127,7 +127,7 @@ export default ({ config, dataDir, emit }) => {
 
 #[tokio::test]
 async fn backend_startup_failures_are_reported() {
-    if codex_plus_core::dsh_plugins::locate_node().is_none() {
+    if codex_plus_core::extension_node::locate_node().is_none() {
         return;
     }
     let temp = tempfile::tempdir().unwrap();
@@ -142,7 +142,7 @@ async fn backend_startup_failures_are_reported() {
 /// （合并测试程序里各用例并发跑，一个用例的 stop_all 曾把别的用例正在用的后台杀掉）。
 #[tokio::test]
 async fn backends_are_scoped_to_their_extension_directory() {
-    if codex_plus_core::dsh_plugins::locate_node().is_none() {
+    if codex_plus_core::extension_node::locate_node().is_none() {
         return;
     }
     let script = [("backend/main.mjs", "export default () => { let count = 0; return { add() { count += 1; return count; } }; };")];
@@ -169,7 +169,7 @@ async fn backends_are_scoped_to_their_extension_directory() {
 
 #[tokio::test]
 async fn backend_can_query_sessions_through_the_host() {
-    if codex_plus_core::dsh_plugins::locate_node().is_none() {
+    if codex_plus_core::extension_node::locate_node().is_none() {
         return;
     }
     let temp = tempfile::tempdir().unwrap();
@@ -193,7 +193,7 @@ async fn backend_can_query_sessions_through_the_host() {
 
 #[tokio::test]
 async fn backends_and_tools_call_services_provided_by_other_backends() {
-    if codex_plus_core::dsh_plugins::locate_node().is_none() {
+    if codex_plus_core::extension_node::locate_node().is_none() {
         return;
     }
     let temp = tempfile::tempdir().unwrap();
@@ -237,7 +237,7 @@ async fn backends_and_tools_call_services_provided_by_other_backends() {
 
 #[tokio::test]
 async fn a_backend_can_call_another_backends_service_while_starting() {
-    if codex_plus_core::dsh_plugins::locate_node().is_none() {
+    if codex_plus_core::extension_node::locate_node().is_none() {
         return;
     }
     let temp = tempfile::tempdir().unwrap();
@@ -264,7 +264,7 @@ async fn a_backend_can_call_another_backends_service_while_starting() {
 
 #[tokio::test]
 async fn http_routes_and_schedules_reach_the_backend() {
-    if codex_plus_core::dsh_plugins::locate_node().is_none() {
+    if codex_plus_core::extension_node::locate_node().is_none() {
         eprintln!("跳过：本机没有 Node");
         return;
     }

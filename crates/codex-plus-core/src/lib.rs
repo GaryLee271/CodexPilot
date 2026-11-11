@@ -12,7 +12,6 @@ pub mod codex_home;
 pub mod codex_local_storage;
 pub mod codex_sqlite;
 
-pub mod dsh_plugins;
 pub mod extension_launch;
 
 pub mod diagnostic_log;

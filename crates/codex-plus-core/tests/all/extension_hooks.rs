@@ -42,7 +42,7 @@ fn hook_declarations_are_validated() {
 
 #[tokio::test]
 async fn dispatch_runs_matching_hooks_with_node_and_merges() {
-    if codex_plus_core::dsh_plugins::locate_node().is_none() {
+    if codex_plus_core::extension_node::locate_node().is_none() {
         eprintln!("跳过：本机没有 Node");
         return;
     }
@@ -105,7 +105,7 @@ fn sync_reports_only_newly_added_events() {
 
 #[tokio::test]
 async fn model_request_hooks_observe_each_step_and_return_nothing() {
-    if codex_plus_core::dsh_plugins::locate_node().is_none() {
+    if codex_plus_core::extension_node::locate_node().is_none() {
         return;
     }
     let temp = tempfile::tempdir().unwrap();

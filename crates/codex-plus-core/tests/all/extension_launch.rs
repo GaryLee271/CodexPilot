@@ -96,7 +96,7 @@ fn extension_launch_args_merge_without_duplicate_names() {
 
 #[tokio::test]
 async fn launch_before_and_after_scripts_run_with_the_launch_context() {
-    if codex_plus_core::dsh_plugins::locate_node().is_none() {
+    if codex_plus_core::extension_node::locate_node().is_none() {
         eprintln!("跳过：本机没有 Node");
         return;
     }

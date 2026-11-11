@@ -2,7 +2,7 @@
 //! 起一个 Node 进程，运行器再 import 拓展脚本并调用其默认导出。这里只管起进程、喂输入、
 //! 读输出与整体超时；各自的运行器脚本与结果语义由调用方定义。
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::Context;
@@ -237,8 +237,62 @@ pub async fn run_runner_with_host(
 }
 
 /// 找 Node；找不到时给出统一的提示。
-pub fn require_node() -> anyhow::Result<std::path::PathBuf> {
-    crate::dsh_plugins::locate_node().context(
+pub fn require_node() -> anyhow::Result<PathBuf> {
+    locate_node().context(
         "没有找到 Node 运行时：请安装 Codex App（自带 Node）或 Node.js，也可用 CODEX_PLUS_NODE 指定",
     )
+}
+
+/// 找 Node：`CODEX_PLUS_NODE` → Codex App 自带的 cua_node → PATH 与常见安装目录。
+pub fn locate_node() -> Option<PathBuf> {
+    if let Some(path) = std::env::var_os("CODEX_PLUS_NODE").map(PathBuf::from) {
+        if path.is_absolute() && path.is_file() {
+            return Some(path);
+        }
+    }
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    #[cfg(target_os = "macos")]
+    {
+        candidates.push(PathBuf::from(
+            "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
+        ));
+        candidates.push(PathBuf::from(
+            "/Applications/Codex.app/Contents/Resources/cua_node/bin/node",
+        ));
+        if let Some(base) = directories::BaseDirs::new() {
+            candidates.push(
+                base.home_dir()
+                    .join("Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node"),
+            );
+        }
+    }
+    candidates
+        .into_iter()
+        .find(|path| path.is_file())
+        .or_else(|| locate_program("node"))
+}
+
+/// 在 PATH 与常见安装目录里找程序。访达启动的 App 拿不到 shell 的 PATH，补上常见位置。
+pub fn locate_program(name: &str) -> Option<PathBuf> {
+    let names: Vec<String> = if cfg!(windows) {
+        vec![format!("{name}.exe"), format!("{name}.cmd"), name.to_string()]
+    } else {
+        vec![name.to_string()]
+    };
+    let mut dirs: Vec<PathBuf> = std::env::var_os("PATH")
+        .map(|path| std::env::split_paths(&path).collect())
+        .unwrap_or_default();
+    if let Some(base) = directories::BaseDirs::new() {
+        for extra in [".local/bin", ".volta/bin", ".npm-global/bin", ".bun/bin"] {
+            dirs.push(base.home_dir().join(extra));
+        }
+    }
+    if cfg!(unix) {
+        dirs.push(PathBuf::from("/opt/homebrew/bin"));
+        dirs.push(PathBuf::from("/usr/local/bin"));
+        dirs.push(PathBuf::from("/usr/bin"));
+    }
+    dirs.into_iter()
+        .flat_map(|dir| names.iter().map(move |name| dir.join(name)))
+        .find(|path| path.is_file())
 }
