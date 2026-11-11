@@ -1,9 +1,8 @@
 name: PR build artifacts
 
+# 只在 PR 与手动触发时构建；直接推送 main 不触发，避免每次提交都跑三平台打包。
 on:
   pull_request:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -177,26 +176,20 @@ jobs:
           set -euo pipefail
           test -L "dist/macos/stage/Applications"
           test "$(readlink "dist/macos/stage/Applications")" = "/Applications"
+          # 只应产出一个 app bundle；旧更新器兼容壳已移除。
           apps=(dist/macos/stage/*.app)
-          test "${#apps[@]}" = "2"
-          test -f "dist/macos/stage/.hidden"
-          grep -qx "Codex Pilot 管理工具.app" "dist/macos/stage/.hidden"
-          for app in "dist/macos/stage/Codex Pilot.app" "dist/macos/stage/Codex Pilot 管理工具.app"; do
-            test -f "$app/Contents/Info.plist"
-            test -f "$app/Contents/PkgInfo"
-            test -x "$app/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
-            if [[ "$app" == *"管理工具.app" ]]; then
-              test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = "com.garylee271.codexpilot.manager"
-              test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")" = "CodexPilotManager"
-            else
-              test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = "com.garylee271.codexpilot"
-              test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")" = "CodexPilot"
-            fi
-            test "$(/usr/libexec/PlistBuddy -c 'Print :CodexPlusUnifiedApp' "$app/Contents/Info.plist")" = "true"
-            plutil -lint "$app/Contents/Info.plist" >/dev/null
-            codesign -dv "$app" >/dev/null 2>&1
-            echo "verified: $app"
-          done
+          test "${#apps[@]}" = "1"
+          app="${apps[0]}"
+          test "$(basename "$app")" = "Codex Pilot.app"
+          test -f "$app/Contents/Info.plist"
+          test -f "$app/Contents/PkgInfo"
+          test -x "$app/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = "com.garylee271.codexpilot"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")" = "CodexPilot"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CodexPlusUnifiedApp' "$app/Contents/Info.plist")" = "true"
+          plutil -lint "$app/Contents/Info.plist" >/dev/null
+          codesign -dv "$app" >/dev/null 2>&1
+          echo "verified: $app"
 
       - name: Upload macOS DMG
         uses: actions/upload-artifact@v4
