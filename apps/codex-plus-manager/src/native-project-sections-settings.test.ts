@@ -39,7 +39,7 @@ test("设置加载和保存只发布本地分区策略，丢弃旧账号关联�
     postJson: async () => response, refreshCodexPlusBackendToggles: () => {},
   });
   vm.runInContext([
-    extract("../../../assets/inject/renderer-inject/30-service-tier.js", "loadBackendSettingsState"),
+    extract("../../../assets/inject/renderer-inject/30-backend-settings-state.js", "loadBackendSettingsState"),
     extract("../../../assets/inject/renderer-inject/40-backend-settings.js", "setBackendSetting"),
   ].join("\n"), context);
   assert.equal(await context.loadBackendSettingsState(), true);

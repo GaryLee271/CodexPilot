@@ -4,7 +4,6 @@
     installStyle();
     syncCodexPlusConversationTabs();
     syncCodexPlusConversationList();
-    installCodexServiceTierDispatcherPatch();
     installCodexAppServerClientPrototypePatch();
     // 拓展注册的图标栏入口也在这里补（见 installCodexPlusNavigationEntries）。
     installCodexPlusNavigationEntries();

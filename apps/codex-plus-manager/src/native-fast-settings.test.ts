@@ -5,7 +5,7 @@ import vm from "node:vm";
 
 const source = readFileSync(new URL("../../../assets/inject/renderer-inject/10-style.js", import.meta.url), "utf8");
 const settingsPage = readFileSync(new URL("../../../assets/inject/renderer-inject/40-backend-settings.js", import.meta.url), "utf8");
-const serviceTier = readFileSync(new URL("../../../assets/inject/renderer-inject/30-service-tier.js", import.meta.url), "utf8");
+const serviceTier = readFileSync(new URL("../../../assets/inject/renderer-inject/30-backend-settings-state.js", import.meta.url), "utf8");
 const extract = (name: string) => {
   const body = source.match(new RegExp(`^  function ${name}\\([^]*?^  \\}`, "m"))?.[0];
   assert.ok(body, name);

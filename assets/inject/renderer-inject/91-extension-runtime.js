@@ -645,7 +645,7 @@
   /**
    * Codex 会话事件：把 app-server 推给页面的通知转成拓展事件 `codex/<method>`。
    *
-   * 复用 30-service-tier 找到的通知分发器（dispatcher.subscribe），只订阅一组固定的通知；
+   * 复用 20-menu 找到的通知分发器（dispatcher.subscribe），只订阅一组固定的通知；
    * 没有拓展监听时 emit 只是一次 Map 查找。分发器换了（Codex 重建客户端）就重新订阅。
    */
   function installCodexExtensionEventBridge(dispatcher) {

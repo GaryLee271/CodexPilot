@@ -8,7 +8,7 @@ const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf
 const catalog = JSON.parse(read("../../../crates/codex-plus-core/assets/enhancement-settings.json"));
 const app = read("./App.tsx");
 const settingsPage = read("../../../assets/inject/renderer-inject/40-backend-settings.js");
-const serviceTier = read("../../../assets/inject/renderer-inject/30-service-tier.js");
+const serviceTier = read("../../../assets/inject/renderer-inject/30-backend-settings-state.js");
 
 test("native predictions is an experimental opt-in shown on both settings pages that explains cost and scope", () => {
   const item = catalog.items.find((entry: { key: string }) => entry.key === "codexAppNativePredictions");

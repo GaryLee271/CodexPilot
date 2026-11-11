@@ -512,7 +512,7 @@ fn injection_script_discovers_vscode_api_asset_without_hardcoded_hash() {
     let script = assets::injection_script();
 
     assert!(script.contains("function loadCodexAppModule(namePart)"));
-    assert!(script.contains("loadCodexAppModule(assetPrefix)"));
+    assert!(script.contains("CODEX_PLUS_ASSET_MISSING"));
     assert!(script.contains("codexAppAssetUrlFromScriptText"));
     assert!(script.contains("fetch(src"));
     assert!(!script.contains("vscode-api-Dc9pX2Bc.js"));

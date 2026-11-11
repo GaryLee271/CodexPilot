@@ -28,7 +28,7 @@ async function runNativeFastSettingsTests() {
   const runtime = context.window.__codexPlusNativeFastUnlock.runtime;
   const predictions = context.window.__codexPlusNativePredictions.runtime;
   vm.runInContext([
-    extract("30-service-tier.js", "loadBackendSettingsState"),
+    extract("30-backend-settings-state.js", "loadBackendSettingsState"),
     extract("40-backend-settings.js", "setBackendSetting"),
   ].join("\n"), context);
 

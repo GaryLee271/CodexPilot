@@ -1095,7 +1095,6 @@ async fn guide_covers_the_public_extension_surface() {
         "## 管理器面板",
         "## 顶替 Codex Pilot 内置功能",
         "## 关掉 Codex Pilot 网关的内置环节",
-        "## 在拓展包里带 dsh 插件",
         "## 用了第三方库的界面（打包产物）",
         "## 赶在 Codex 之前（preload）与启动前后（launch）",
     ] {

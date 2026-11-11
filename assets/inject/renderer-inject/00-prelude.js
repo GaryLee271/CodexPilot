@@ -97,7 +97,6 @@
   // 项目仓库地址，界面上需要外链的地方统一取这里，避免散落多处硬编码。
   const codexPilotRepoUrl = "https://github.com/GaryLee271/CodexPilot";
   const codexPlusSettingsKey = "codexPlusSettings";
-  const codexServiceTierRequestOverrideVersion = "10";
   const codexAppServerModelRequestPatchVersion = "30";
   const codexAppServerClientCaptureMarker = "AppServerRequestClient is missing a message dispatcher";
   const codexAppServerClientCaptureAnchor = "async sendRequest(";

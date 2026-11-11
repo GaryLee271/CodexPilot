@@ -1,10 +1,3 @@
-  function dispatchCodexPlusMessage(dispatcher, type, payload) {
-    const message = codexServiceTierRequestOverride({ ...(payload || {}), type });
-    const nextType = message?.type || type;
-    const { type: _type, ...nextPayload } = message || {};
-    return dispatcher.__codexServiceTierOriginalDispatchMessage(nextType, nextPayload);
-  }
-
   function uniqueValues(values) {
     return Array.from(new Set(values.filter((value) => typeof value === "string" && value.trim().length > 0)));
   }
@@ -14,9 +7,6 @@
   let codexModelCatalogPromise = null;
   if (window.__CODEX_PLUS_TEST_SERVICE_TIER__) {
     window.__codexPlusServiceTierTest = {
-      applyServiceTierOverride: (method, params, threadIdHint = "") => applyCodexServiceTierRequestOverride(method, params, threadIdHint),
-      dispatchMessage: (dispatcher, type, payload) => dispatchCodexPlusMessage(dispatcher, type, payload),
-      requestOverride: (message) => codexServiceTierRequestOverride(message),
       diagnostics: () => [...(window.__codexPlusServiceTierTestDiagnostics || [])],
       currentModelName: () => codexServiceTierCurrentModelName(),
       fastAvailability: (modelName = codexServiceTierCurrentModelName()) => codexServiceTierFastAvailability(modelName),
@@ -41,7 +31,6 @@
         codexPlusBackendSettings = { ...codexPlusBackendSettings, ...settings };
         codexPlusBackendSettingsLoaded = true;
       },
-      dispatcherFromModule: codexServiceTierDispatcherFromModule,
       patchAppServerClient: patchAppServerModelRequestClient,
       locateAppServerClientBreakpoint: locateCodexAppServerClientBreakpoint,
       installAppServerClientPrototypePatch: installCodexAppServerClientPrototypePatch,
@@ -52,7 +41,6 @@
     };
     return;
   }
-
   function codexPlusModelNames() {
     return uniqueValues([
       codexModelCatalog.default_model,

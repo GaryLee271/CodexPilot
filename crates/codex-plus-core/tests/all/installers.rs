@@ -91,7 +91,8 @@ fn installer_name_helpers_and_legacy_constants_keep_api_compatibility() {
 
 #[test]
 fn windows_workflows_verify_nsis_and_support_both_program_files_directories() {
-    for workflow in ["pr-build.yml", "release-assets.yml"] {
+    // release-assets.yml 已移除（依赖上游签名密钥），Windows 打包只剩 PR 构建这一处。
+    for workflow in ["pr-build.yml"] {
         let text = std::fs::read_to_string(format!("../../.github/workflows/{workflow}"))
             .unwrap()
             .replace("\r\n", "\n");
