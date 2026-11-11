@@ -22,7 +22,7 @@ The manager uses a narrow sidebar for Enhancements and Settings, with vertically
   <sub>Dark theme follows the system appearance</sub>
 </p>
 
-Plugin marketplace, MCP / Skills management, user extensions, Weixin connection, skin management, provider management, model gateway, other agents, manager session management, history repair, utility pages and usage-mode selection have been removed. Enhancement model requests read the active native Codex configuration and call the Responses endpoint directly.
+Plugin marketplace, dsh plugin import, MCP / Skills management, user extensions, Weixin connection, skin management, provider management, model gateway, other agents, manager session management, history repair, utility pages and usage-mode selection have been removed. Enhancement model requests read the active native Codex configuration and call the Responses endpoint directly.
 
 See the [development instructions](AGENTS.md). Upstream release packages have a different feature set.
 
