@@ -117,6 +117,8 @@ const THREAD_COLUMNS: &[&str] = &[
     "first_user_message",
     "rollout_path",
     "git_branch",
+    // 新版 Codex 把会话名单独放一列；旧库没有该列时由 select_list 补 NULL。
+    "name",
 ];
 
 fn select_list(columns: &[String]) -> String {
@@ -133,14 +135,29 @@ fn select_list(columns: &[String]) -> String {
         .join(", ")
 }
 
+/// 列表显示用标题：优先新版 Codex 的 `name` 列（会话名）。
+/// `title` 列在 Codex 里存的是首条用户消息原文（可能几万字符），旧库没有 `name` 时
+/// 才退回它；折叠空白并限长，避免超长文本进 DOM、aria-label 和 tooltip。
+/// `title` 字段本身保持原值，不改第三方拓展读到的既有契约。
+fn thread_display_title(name: &str, title: &str) -> String {
+    let chosen = if name.trim().is_empty() { title } else { name };
+    let flat = chosen.split_whitespace().collect::<Vec<_>>().join(" ");
+    truncate(&flat, 120)
+}
+
 fn thread_value(row: &rusqlite::Row<'_>) -> rusqlite::Result<(Value, Option<String>)> {
     let text = |index: usize| row.get::<_, Option<String>>(index).ok().flatten();
     let number = |index: usize| row.get::<_, Option<i64>>(index).ok().flatten();
     let rollout = text(8);
+    let title = text(1).unwrap_or_default();
+    let name = text(10).unwrap_or_default();
+    let display_title = thread_display_title(&name, &title);
     Ok((
         json!({
             "id": text(0).unwrap_or_default(),
-            "title": text(1).unwrap_or_default(),
+            "title": title,
+            "name": name,
+            "displayTitle": display_title,
             "cwd": text(2).unwrap_or_default(),
             "model": text(3).unwrap_or_default(),
             "createdAt": number(4),
@@ -197,7 +214,8 @@ fn list_sessions_in(connection: &Connection, columns: &[String], query: &Value) 
         .map(str::trim)
         .filter(|text| !text.is_empty())
     {
-        let fields = ["title", "first_user_message", "cwd"]
+        // 会话名也要能搜到；旧库没有 name 列时 filter 会自动跳过。
+        let fields = ["title", "name", "first_user_message", "cwd"]
             .into_iter()
             .filter(|column| has(column))
             .collect::<Vec<_>>();

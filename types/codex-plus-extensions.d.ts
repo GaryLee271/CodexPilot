@@ -420,7 +420,12 @@ interface CodexPlusExtensionFiber {
 /** 会话查询返回的会话。 */
 interface CodexPlusSession {
   id: string;
+  /** Codex 的 title 列：通常是首条用户消息原文，可能很长。 */
   title: string;
+  /** 新版 Codex 的会话名；旧库没有该列时为空字符串。 */
+  name: string;
+  /** 列表显示用标题：优先会话名，否则把 title 折叠空白并截断到 120 字。 */
+  displayTitle: string;
   cwd: string;
   model: string;
   createdAt: number | null;

@@ -43,6 +43,14 @@
     },
   };
 
+  // 后端已给 displayTitle（优先会话名）；这里再兜一层：老版本后端只给 title，
+  // 而 Codex 的 title 列存的是首条用户消息原文，可能几万字符，不能原样塞进
+  // DOM / aria-label / tooltip。折叠空白并限长，阈值比后端的 120 宽一档，避免重复截断。
+  function cleanTitle(value) {
+    const flat = String(value || '').replace(/\s+/g, ' ').trim();
+    return flat.length > 200 ? flat.slice(0, 200) + '…' : flat;
+  }
+
   function syncCodexPlusConversationList() {
     // 与设置页一致：设置开关开着、且对应内置拓展没被停用/顶替才算启用。
     const builtinActive = typeof codexPlusBuiltinExtensionActive === 'function'
@@ -321,7 +329,7 @@
       }
       ordered.forEach(session => {
         const n = node(session.id);
-        const title = String(session.title || '').trim() || str.untitled;
+        const title = cleanTitle(session.displayTitle || session.name || session.title) || str.untitled;
         if (n.title !== title) { n.title = title; n.label.textContent = title; n.open.setAttribute('aria-label', title); }
         const state = nativeStates.get(session.id);
         const native = !!statusContext && state != null && state !== 'idle';

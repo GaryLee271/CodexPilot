@@ -602,13 +602,15 @@ codexPlus.extension({ inject: ["sessionQuery"], async apply(ctx) {
 | `listEvents(id, { types?, offset?, limit?, fromEnd? })` | 轻量事件（长文本截到 200 字） |
 | `filterEvents(id, { types?, text?, limit? })` | 匹配的事件（文本不分大小写） |
 | `readEvent({ sessionId, seq, before?, after? })` | 以 seq 为中心的事件窗口 |
-| `searchSessions({ query, limit?, cursor? })` | `{ items, nextCursor }`，按标题、首条消息、目录匹配 |
+| `searchSessions({ query, limit?, cursor? })` | `{ items, nextCursor }`，按 title、会话名（name）、首条消息、目录匹配 |
 | `searchEvents({ query, sessionId?, types?, archived?, limit?, cursor? })` | `{ items: [{ sessionId, event }], nextCursor }`；不给 sessionId 时按新到旧扫全部会话，找够一页即停 |
 | `readEventsSince({ sessionId, seq, limit? })` | seq 及之后的完整事件（增量读） |
 | `project(id, { init, apply })` | 把事件日志折叠成状态：`apply(state, event)` 返回新状态 |
 | `observeSession(id, handler, { intervalMs?, fromSeq? })` | 订阅新事件（默认从当前末尾开始，每 2 秒增量读），返回撤销函数；页面与后台可用 |
 
-- 会话：`{ id, title, cwd, model, createdAt, updatedAt, archived, preview, gitBranch }`。
+- 会话：`{ id, title, name, displayTitle, cwd, model, createdAt, updatedAt, archived, preview, gitBranch }`。
+  `title` 是 Codex 的 title 列（通常是首条用户消息原文，可能很长）；`name` 是新版 Codex 的会话名，旧库为空；
+  `displayTitle` 是列表显示用标题（优先 `name`，否则把 `title` 折叠空白并截到 120 字）。列表类界面请用 `displayTitle`。
 - 事件：`{ type, seq, time, data }`。`type` 有 `turn/start`、`user/message`、`assistant/message`（`data.phase`）、
   `assistant/reasoning`（只有摘要）、`tool/call`（`name`、`callId`、`input`）、`tool/result`（`callId`、`output`）、
   `turn/complete`（`durationMs`、`lastMessage`）、`turn/aborted`（`reason`）、`token/usage`（`total`、`last`、`contextWindow`）、

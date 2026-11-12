@@ -2841,3 +2841,20 @@ describe("拓展输入触发、快捷键与主题", () => {
     assert.equal(styles.has("codex-plus-extension-theme"), false);
   });
 });
+
+describe("跨项目会话列表标题", () => {
+  const fragment = new URL("../../../assets/inject/renderer-inject/62-conversation-list.js", import.meta.url);
+
+  it("优先用会话名，超长首条消息折叠空白并截断", async () => {
+    const source = await readFile(fragment, "utf8");
+    const match = source.match(/  function cleanTitle\(value\) \{[\s\S]*?\n  \}/);
+    assert.ok(match, "分片里要有 cleanTitle 防御旧后端数据");
+    const cleanTitle = new Function(`${match![0]}\nreturn cleanTitle;`)() as (value: unknown) => string;
+    assert.equal(cleanTitle("  重构\n登录页  "), "重构 登录页");
+    assert.equal(cleanTitle(""), "");
+    assert.equal(cleanTitle(null), "");
+    assert.equal(cleanTitle("x".repeat(500)).length, 201, "200 字 + 省略号");
+    assert.match(source, /cleanTitle\(session\.displayTitle \|\| session\.name \|\| session\.title\)/);
+    assert.doesNotMatch(source, /const title = String\(session\.title/);
+  });
+});

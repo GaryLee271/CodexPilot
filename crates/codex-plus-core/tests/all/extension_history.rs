@@ -162,6 +162,57 @@ fn recent_threads_carry_project_names_and_paging() {
 }
 
 #[test]
+fn recent_threads_use_the_session_name_not_the_first_message() {
+    let _guard = crate::common::global_state_lock();
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    let db = rusqlite::Connection::open(home.join("state_5.sqlite")).unwrap();
+    db.execute_batch(
+        "CREATE TABLE threads (id TEXT PRIMARY KEY, rollout_path TEXT, title TEXT, cwd TEXT,
+         model TEXT, created_at INTEGER, updated_at INTEGER, archived INTEGER,
+         first_user_message TEXT, git_branch TEXT, name TEXT);",
+    )
+    .unwrap();
+    // Codex 把首条用户消息原文写进 title，真正的会话名在 name 列。
+    let first_message = format!("帮我\n重构  登录页\n{}", "并且把测试补齐 ".repeat(40));
+    for (id, title, name, updated) in [
+        ("t-named", first_message.as_str(), "重构登录页", 30),
+        ("t-long", first_message.as_str(), "", 20),
+        ("t-empty", "", "", 10),
+    ] {
+        db.execute(
+            "INSERT INTO threads (id, rollout_path, title, cwd, model, created_at, updated_at,
+             archived, first_user_message, git_branch, name)
+             VALUES (?1, '', ?2, '/work', 'gpt', 1, ?3, 0, ?2, 'main', ?4)",
+            rusqlite::params![id, title, updated, name],
+        )
+        .unwrap();
+    }
+    drop(db);
+
+    let page = call(home, "listRecentThreads", &json!({})).unwrap();
+    let sessions = page["sessions"].as_array().unwrap();
+    let get = |id: &str| sessions.iter().find(|session| session["id"] == id).unwrap();
+    assert_eq!(get("t-named")["name"], "重构登录页");
+    assert_eq!(get("t-named")["displayTitle"], "重构登录页", "显示用标题优先取会话名");
+    assert_eq!(get("t-named")["title"].as_str(), Some(first_message.as_str()), "title 原值不变，拓展契约不改");
+    // 没有会话名时才退回首条消息，且必须折叠空白并限长。
+    assert_eq!(get("t-long")["name"], "");
+    let fallback = get("t-long")["displayTitle"].as_str().unwrap();
+    assert!(fallback.starts_with("帮我 重构 登录页 并且把测试补齐"), "折叠换行与多余空白");
+    assert_eq!(fallback.chars().count(), 121, "120 字 + 省略号，不能把几万字符塞给前端");
+    assert_eq!(get("t-empty")["displayTitle"].as_str(), Some(""), "两者都空时交给前端显示未命名");
+    let found = call(home, "searchSessions", &json!({"query": "重构登录页"})).unwrap();
+    assert_eq!(ids(&found["items"]), ["t-named"], "会话名也要能搜到");
+
+    // 旧库没有 name 列：select_list 补 NULL，只降级不报错。
+    let legacy = home_with_threads();
+    let old = call(legacy.path(), "listRecentThreads", &json!({})).unwrap();
+    assert_eq!(old["sessions"][0]["name"], "");
+    assert_eq!(old["sessions"][0]["displayTitle"], "画曲线图");
+}
+
+#[test]
 fn recent_threads_follow_the_active_session_database() {
     let _guard = crate::common::global_state_lock();
     let temp = tempfile::tempdir().unwrap();
