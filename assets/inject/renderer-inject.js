@@ -4325,6 +4325,8 @@
   const CPL_SEARCH_SELECTOR = 'button[aria-label="搜索"], button[aria-label="Search"]';
   const CPL_PAGE_SIZE = 50;
   const CPL_MAX_ITEMS = 100;
+  // 会话 id 是标准 UUID；原生行 id 可能带 local: / client-new-thread: 前缀，取最后一段再校验。
+  const CPL_THREAD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const CPL_ICON_LIST = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M7 5h9M7 10h9M7 15h9"/><circle cx="4" cy="5" r="1" fill="currentColor" stroke="none"/><circle cx="4" cy="10" r="1" fill="currentColor" stroke="none"/><circle cx="4" cy="15" r="1" fill="currentColor" stroke="none"/></svg>';
   const CPL_ICON_FOLDER = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><path d="M1.8 4.2h4.4l1.4 1.6h6.6v7.2H1.8z"/></svg>';
   // 分支图标：两个节点 + 一条汇入的弧线，尺寸比项目图标再小一号。
@@ -4419,8 +4421,9 @@
     let statusApi = null, statusLoading = false, statusContext = null, statusWatch = null;
     let statusIds = '', statusGeneration = 0;
     let nativeStates = new Map(), nativeProjects = new Map();
-    // 当前打开的会话 id。原生行带 data-app-action-sidebar-thread-selected，是唯一可靠来源；
-    // 刚点完列表项时原生还未重渲染，用它自己的乐观值顶住一小段时间，避免高亮闪回。
+    // 当前打开的会话 id。来源优先级：React 路由（标签栏/命令面板/前进后退都会更新）
+    // > 原生侧栏行的 selected 属性（新会话临时路由时兜底）。刚点完列表项时原生还没
+    // 导航完，用它自己的乐观值顶住一小段时间，避免高亮闪回。
     let selectedId = '', selectionLockUntil = 0, selectionWatch = null;
     const nodes = new Map();
     const groups = new Map();
@@ -4893,8 +4896,9 @@
       applySelection();
     }
 
-    /** 切换会话时原生只改 selected 属性、不重建节点，主扫描的 attributeFilter 里没有它，
-        所以这里单独盯这一个属性。回调只做一次 querySelector，比让主扫描整轮重跑便宜得多。 */
+    /** 切换会话时原生只改属性、不重建节点，主扫描的 attributeFilter 里没有它们，
+        所以这里单独盯这两个属性。页面切换（标签栏 / 命令面板 / 前进后退）只会翻
+        data-app-shell-active-page，原生侧栏行的 selected 不一定跟着变，两个都要盯。 */
     function watchSelection() {
       if (selectionWatch || typeof MutationObserver !== 'function') return;
       selectionWatch = new MutationObserver(() => {
@@ -4902,7 +4906,8 @@
         if (syncSelection()) applySelection();
       });
       selectionWatch.observe(document.documentElement, {
-        subtree: true, attributes: true, attributeFilter: ['data-app-action-sidebar-thread-selected'],
+        subtree: true, attributes: true,
+        attributeFilter: ['data-app-action-sidebar-thread-selected', 'data-app-shell-active-page'],
       });
     }
 
@@ -4923,16 +4928,59 @@
     }
 
     /**
-     * 当前会话从原生侧栏行读：只有它带 data-app-action-sidebar-thread-selected。
-     * 原生列表被我们隐藏（display:none）但 React 仍在维护子树，属性会随切会话更新。
-     * 虚拟化把行卸载时读不到 —— 这时保留上一次的值，不能清空，否则选中态会闪没。
+     * 当前路由指向的会话 id。
+     *
+     * 原生侧栏行的 data-app-action-sidebar-thread-selected 只在「从原生列表点进去」时
+     * 才翻：从标签栏、命令面板、前进后退切会话时它不会更新（实测切换后所有行都是
+     * false），所以不能当唯一来源。当前页面容器的 React 路由才是稳定信号 —— 标签栏
+     * 自己（61 分片）也是这么判的。
+     *
+     * known=false 表示「还读不到」（新会话的临时路由、页面过渡中），调用方要保留上一次
+     * 的选中项，不能清空，否则高亮会闪没。
      */
+    function currentThreadRoute() {
+      const anchor = [...document.querySelectorAll('[data-app-shell-active-page="true"]')]
+        .find(element => !element.closest('[data-app-shell-active-page="false"], [inert]'));
+      const key = anchor && Object.getOwnPropertyNames(anchor).find(name => name.startsWith('__reactFiber$'));
+      let fiber = anchor?.[key], root = fiber;
+      for (let depth = 0; root?.return && depth < 200; depth++) root = root.return;
+      // React 会交替提交两棵 fiber；DOM 上的引用可能仍指向旧树，不能拿旧路由覆盖新选中项。
+      if (fiber?.alternate && root?.stateNode?.current && root.stateNode.current !== root) fiber = fiber.alternate;
+      for (let depth = 0; fiber && depth < 180; fiber = fiber.return, depth++) {
+        const route = fiber.memoizedProps?.value;
+        if (typeof route?.routeKind !== 'string' || typeof route.pathname !== 'string') continue;
+        // 新会话的临时路由还没有正式 UUID，等侧栏或下一次路由确认。
+        if (route.routeKind === 'client-local-thread') return { known: false, id: '' };
+        if (route.routeKind !== 'local-thread' || (route.hostId != null && route.hostId !== 'local')) {
+          return { known: true, id: '' };
+        }
+        const id = typeof route.conversationId === 'string' && CPL_THREAD_ID.test(route.conversationId)
+          ? route.conversationId : (/^\/local\/([\w-]+)(?:[/?#]|$)/.exec(route.pathname)?.[1] || '');
+        return { known: CPL_THREAD_ID.test(id), id: CPL_THREAD_ID.test(id) ? id.toLowerCase() : '' };
+      }
+      return { known: false, id: '' };
+    }
+
+    /** 原生侧栏行上的选中项：路由读不到时（新会话）才用，且同样要保留读不到时的旧值。 */
+    function selectedFromSidebarRow() {
+      const row = document.querySelector('[data-app-action-sidebar-thread-selected="true"]');
+      if (!row) return null;
+      const raw = String(row.getAttribute('data-app-action-sidebar-thread-id') || '').split(':').pop();
+      return CPL_THREAD_ID.test(raw) ? raw.toLowerCase() : null;
+    }
+
     function syncSelection() {
       if (Date.now() < selectionLockUntil) return false;
-      const row = document.querySelector('[data-app-action-sidebar-thread-selected="true"]');
-      if (!row) return false;
-      const next = String(row.getAttribute('data-app-action-sidebar-thread-id') || '').replace(/^local:/, '');
-      if (!next || next === selectedId) return false;
+      const route = currentThreadRoute();
+      let next;
+      if (route.known) {
+        next = route.id;
+      } else {
+        const fromRow = selectedFromSidebarRow();
+        if (fromRow == null) return false;
+        next = fromRow;
+      }
+      if (next === selectedId) return false;
       selectedId = next;
       return true;
     }

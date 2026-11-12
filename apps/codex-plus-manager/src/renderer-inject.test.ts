@@ -2960,12 +2960,13 @@ describe("跨项目会话列表选中态", () => {
 
   it("从原生行同步当前会话，点击时先乐观高亮", async () => {
     const source = await readFile(fragment, "utf8");
-    // 原生侧栏行是唯一带「当前会话」标识的地方，隐藏后 React 仍在维护这些属性。
+    // 原生侧栏行是带「当前会话」标识的地方之一，隐藏后 React 仍在维护这些属性。
     assert.match(source, /\[data-app-action-sidebar-thread-selected="true"\]/);
     assert.match(source, /getAttribute\('data-app-action-sidebar-thread-id'\)/);
-    assert.match(source, /\.replace\(\/\^local:\/, ''\)/, "去掉原生行的 local: 前缀再和 session.id 比");
-    // 虚拟化把行卸载时读不到 selected，不能把已有的高亮清掉。
-    assert.match(source, /if \(!row\) return false/);
+    // 行 id 可能是 local:<uuid> 或 local:client-new-thread:<uuid>，取最后一段再校验 UUID。
+    assert.match(source, /\.split\(':'\)\.pop\(\)/, "取行 id 最后一段与 session.id 比");
+    // 读不到时保留已有的高亮，不能清掉。
+    assert.match(source, /if \(fromRow == null\) return false/);
     // 点完列表项到原生重渲染之间有延迟，这段窗口里必须用点击结果顶住。
     assert.match(source, /selectedId = id;\s*\n\s*selectionLockUntil = Date\.now\(\) \+ 1200;/);
     assert.match(source, /if \(Date\.now\(\) < selectionLockUntil\) return false/);
@@ -2974,9 +2975,20 @@ describe("跨项目会话列表选中态", () => {
     assert.match(source, /n\.open\.setAttribute\('aria-current', 'page'\)/);
     assert.match(source, /\.cpl-item\[data-cpl-selected="true"\] \{ background: rgba\(127,127,127,\.14\)/, "选中底色略重于 hover");
     assert.match(source, /\.cpl-item\[data-cpl-selected="true"\]:hover \{ background: rgba\(127,127,127,\.18\)/, "悬停选中项不会变浅");
-    // 切会话时原生只改 selected 属性、不重建节点，而主扫描的 attributeFilter 里没有这个属性，
-    // 不单独盯一条就会一直停在旧会话上。
-    assert.match(source, /attributeFilter: \['data-app-action-sidebar-thread-selected'\]/);
     assert.match(source, /selectionWatch\?\.disconnect\(\); selectionWatch = null/, "dispose 时要断开观察");
+  });
+
+  it("当前会话以 React 路由为准，标签栏切换也能跟上", async () => {
+    const source = await readFile(fragment, "utf8");
+    // 从标签栏 / 命令面板 / 前进后退切会话时原生行的 selected 不会翻（实测全为 false），
+    // 只有当前页面容器的 React 路由是稳定信号；标签栏分片也是这么判的。
+    assert.match(source, /function currentThreadRoute\(\)/, "必须从路由读当前会话");
+    assert.match(source, /__reactFiber\$/, "沿 fiber 找路由 context");
+    assert.match(source, /memoizedProps\?\.value/);
+    assert.match(source, /routeKind === 'client-local-thread'\) return \{ known: false/, "临时新会话不清空高亮");
+    assert.match(source, /const route = currentThreadRoute\(\);/, "选中来源优先路由");
+    assert.match(source, /if \(route\.known\) \{\s*\n\s*next = route\.id;/, "路由可用时直接用它");
+    // 页面切换只会翻 data-app-shell-active-page，不盯它就只能在主扫描时才跟上。
+    assert.match(source, /attributeFilter: \['data-app-action-sidebar-thread-selected', 'data-app-shell-active-page'\]/, "页面切换要立刻同步");
   });
 });

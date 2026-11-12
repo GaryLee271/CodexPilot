@@ -63,7 +63,7 @@
     {
       "name": "62-conversation-list.js",
       "description": "跨项目会话列表：侧栏搜索旁入口、替换原生列表、时间分区、时间倒序与项目归属",
-      "lines": 754
+      "lines": 802
     },
     {
       "name": "70-model-catalog.js",
