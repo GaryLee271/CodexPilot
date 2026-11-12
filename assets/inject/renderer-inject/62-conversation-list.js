@@ -157,7 +157,12 @@
            一大段空白，原生列表的滚动高度也跟着错乱。 */
         .cpl-panel { display: none; flex-direction: column; }
         [${CPL_ACTIVE_ATTR}="true"] > .cpl-panel { display: flex; }
-        .cpl-list { padding: 2px 4px; overflow-anchor: none; }
+        /* 上边不出内边距：sticky 的吸附点由容器 padding-top 决定（--cpl-pin-top 就是
+           它的负值），列表再留 padding-top 的话首组标题的正常流位置会比吸附点低几个
+           像素，向下滚动时它会先跟着内容往上走一段才钉住，看起来就是「第一个标题
+           不该动却在动」。这里用同一个负 margin 把列表整体提到吸附线上，padding-top
+           归零，首个标题一开始就处在最终位置。 */
+        .cpl-list { margin-top: var(--cpl-pin-top, 0px); padding: 0 4px 2px; overflow-anchor: none; }
         /* 每组会话连同标题包一个 section。sticky 的约束框是 section 而不是整个列表：
            滚到下一组时，上一组标题会被自己 section 的末尾顶走。平铺着放的话多个标题
            会同时钉在 top:0 叠在一起（分组之间没有会话时尤其明显）。 */
@@ -170,13 +175,14 @@
            标题只能钉在 padding 下沿，上面那条缝会露出正在滚动的会话文字。syncSurface()
            会实测容器 padding-top 写进 --cpl-pin-top（负值），把标题顶到真正的视口上缘。
            line-height 写绝对值：默认 1.5 会算出 16.5px，标题和条目高度带 .5px 小数，
-           滚动时每帧的像素对齐结果来回跳，看起来就是发虚/抖动。 */
-        .cpl-group { position: sticky; top: var(--cpl-pin-top, 0px); z-index: 1; padding: 10px 8px 4px;
+           滚动时每帧的像素对齐结果来回跳，看起来就是发虚/抖动。
+           上下 padding 必须相等（7+16+7=30），否则文字在色块里偏上/偏下；也只有一个
+           高度，不要给首组单独改 padding，否则首块会比其它块矮一截。 */
+        .cpl-group { position: sticky; top: var(--cpl-pin-top, 0px); z-index: 1; padding: 7px 8px;
           border: 0; border-radius: 0; box-shadow: none;
           font-size: 11px; font-weight: 500; line-height: 16px;
           color: var(--codex-plus-text-secondary, var(--color-token-text-secondary, inherit));
           background: var(--cpl-surface-bg, var(--codex-plus-bg-primary, Canvas)); }
-        .cpl-section:first-child > .cpl-group { padding-top: 4px; }
         .cpl-item { border-radius: 8px; }
         .cpl-item:hover { background: rgba(127,127,127,.10); }
         .cpl-open { display: flex; flex-direction: column; gap: 3px; width: 100%; box-sizing: border-box;

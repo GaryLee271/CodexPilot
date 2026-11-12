@@ -2945,5 +2945,12 @@ describe("跨项目会话列表时间分区", () => {
     assert.match(source, /const kids = g\.box\.children/);
     assert.match(source, /if \(!same\) g\.box\.append/, "顺序未变时跳过 DOM 搬动");
     assert.match(source, /\.cpl-list \{[^}]*overflow-anchor: none/, "关掉滚动锚定");
+    // 首组不能有单独的内边距：sticky 的吸附点由容器 padding-top 决定，列表再留上内边距
+    // 会让首组标题的正常流位置比吸附点低几像素，向下滚动时它要先滑一段才钉住；顺带
+    // 首组高度也会比其它组矮一截、文字不居中。上下 padding 必须相等才能垂直居中。
+    assert.match(source, /\.cpl-list \{[^}]*margin-top: var\(--cpl-pin-top, 0px\)/, "列表用负上边距对齐吸附线");
+    assert.match(source, /\.cpl-list \{[^}]*padding: 0 4px 2px/, "列表不留上内边距");
+    assert.doesNotMatch(source, /\.cpl-section:first-child > \.cpl-group/, "首组不设特殊内边距");
+    assert.match(source, /\.cpl-group \{[^}]*padding: 7px 8px;/, "分组标题上下内边距相等");
   });
 });
