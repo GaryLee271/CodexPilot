@@ -2954,3 +2954,29 @@ describe("跨项目会话列表时间分区", () => {
     assert.match(source, /\.cpl-group \{[^}]*padding: 7px 8px;/, "分组标题上下内边距相等");
   });
 });
+
+describe("跨项目会话列表选中态", () => {
+  const fragment = new URL("../../../assets/inject/renderer-inject/62-conversation-list.js", import.meta.url);
+
+  it("从原生行同步当前会话，点击时先乐观高亮", async () => {
+    const source = await readFile(fragment, "utf8");
+    // 原生侧栏行是唯一带「当前会话」标识的地方，隐藏后 React 仍在维护这些属性。
+    assert.match(source, /\[data-app-action-sidebar-thread-selected="true"\]/);
+    assert.match(source, /getAttribute\('data-app-action-sidebar-thread-id'\)/);
+    assert.match(source, /\.replace\(\/\^local:\/, ''\)/, "去掉原生行的 local: 前缀再和 session.id 比");
+    // 虚拟化把行卸载时读不到 selected，不能把已有的高亮清掉。
+    assert.match(source, /if \(!row\) return false/);
+    // 点完列表项到原生重渲染之间有延迟，这段窗口里必须用点击结果顶住。
+    assert.match(source, /selectedId = id;\s*\n\s*selectionLockUntil = Date\.now\(\) \+ 1200;/);
+    assert.match(source, /if \(Date\.now\(\) < selectionLockUntil\) return false/);
+    // 只改属性，不重建节点：每秒都会重算一次。
+    assert.match(source, /n\.item\.setAttribute\('data-cpl-selected', 'true'\)/);
+    assert.match(source, /n\.open\.setAttribute\('aria-current', 'page'\)/);
+    assert.match(source, /\.cpl-item\[data-cpl-selected="true"\] \{ background: rgba\(127,127,127,\.14\)/, "选中底色略重于 hover");
+    assert.match(source, /\.cpl-item\[data-cpl-selected="true"\]:hover \{ background: rgba\(127,127,127,\.18\)/, "悬停选中项不会变浅");
+    // 切会话时原生只改 selected 属性、不重建节点，而主扫描的 attributeFilter 里没有这个属性，
+    // 不单独盯一条就会一直停在旧会话上。
+    assert.match(source, /attributeFilter: \['data-app-action-sidebar-thread-selected'\]/);
+    assert.match(source, /selectionWatch\?\.disconnect\(\); selectionWatch = null/, "dispose 时要断开观察");
+  });
+});

@@ -118,6 +118,9 @@
     let statusApi = null, statusLoading = false, statusContext = null, statusWatch = null;
     let statusIds = '', statusGeneration = 0;
     let nativeStates = new Map(), nativeProjects = new Map();
+    // 当前打开的会话 id。原生行带 data-app-action-sidebar-thread-selected，是唯一可靠来源；
+    // 刚点完列表项时原生还未重渲染，用它自己的乐观值顶住一小段时间，避免高亮闪回。
+    let selectedId = '', selectionLockUntil = 0, selectionWatch = null;
     const nodes = new Map();
     const groups = new Map();
 
@@ -185,6 +188,10 @@
           background: var(--cpl-surface-bg, var(--codex-plus-bg-primary, Canvas)); }
         .cpl-item { border-radius: 8px; }
         .cpl-item:hover { background: rgba(127,127,127,.10); }
+        /* 选中态跟原生一致：一块淡中性底，不描边不加左侧竖条。用中性灰而不是黑色，
+           深色主题下同样看得见；比 hover 略重，悬停到选中项上不会反而变浅。 */
+        .cpl-item[data-cpl-selected="true"] { background: rgba(127,127,127,.14); }
+        .cpl-item[data-cpl-selected="true"]:hover { background: rgba(127,127,127,.18); }
         .cpl-open { display: flex; flex-direction: column; gap: 3px; width: 100%; box-sizing: border-box;
           padding: 6px 8px; border: 0; background: transparent; color: inherit; text-align: left;
           cursor: pointer; font: inherit; }
@@ -408,6 +415,9 @@
       syncSurface();
       syncLanguage();
       ensureHeaderEntry();
+      // 从别处切会话（标签栏、命令面板、原生列表）时把高亮跟过去。只读一次属性，成本很低。
+      watchSelection();
+      if (syncSelection()) applySelection();
       const scroll = document.querySelector(CPL_SCROLL_SELECTOR);
       if (!scroll) {
         applyActive();
@@ -469,7 +479,7 @@
       }, opts);
       item.append(open);
       n = { item, open, status, label, projectIcon, projectLabel, branch, branchLabel,
-        title: null, projectName: null, branchName: null,
+        title: null, projectName: null, branchName: null, selected: null,
         statusRoot: null, projectRoot: null, state: null, projectKey: null };
       nodes.set(id, n);
       return n;
@@ -579,6 +589,51 @@
       moreButton.hidden = !canMore;
       moreButton.textContent = str.more;
       setStatus(items.length ? (items.length >= CPL_MAX_ITEMS ? str.limit : str.count(items.length, total)) : str.empty);
+      applySelection();
+    }
+
+    /** 切换会话时原生只改 selected 属性、不重建节点，主扫描的 attributeFilter 里没有它，
+        所以这里单独盯这一个属性。回调只做一次 querySelector，比让主扫描整轮重跑便宜得多。 */
+    function watchSelection() {
+      if (selectionWatch || typeof MutationObserver !== 'function') return;
+      selectionWatch = new MutationObserver(() => {
+        if (disposed) return;
+        if (syncSelection()) applySelection();
+      });
+      selectionWatch.observe(document.documentElement, {
+        subtree: true, attributes: true, attributeFilter: ['data-app-action-sidebar-thread-selected'],
+      });
+    }
+
+    /** 选中态只改属性，不重建节点：每秒都会重算，改动必须幂等且无副作用。 */
+    function applySelection() {
+      for (const [id, n] of nodes) {
+        const on = !!selectedId && id === selectedId;
+        if (n.selected === on) continue;
+        n.selected = on;
+        if (on) {
+          n.item.setAttribute('data-cpl-selected', 'true');
+          n.open.setAttribute('aria-current', 'page');
+        } else {
+          n.item.removeAttribute('data-cpl-selected');
+          n.open.removeAttribute('aria-current');
+        }
+      }
+    }
+
+    /**
+     * 当前会话从原生侧栏行读：只有它带 data-app-action-sidebar-thread-selected。
+     * 原生列表被我们隐藏（display:none）但 React 仍在维护子树，属性会随切会话更新。
+     * 虚拟化把行卸载时读不到 —— 这时保留上一次的值，不能清空，否则选中态会闪没。
+     */
+    function syncSelection() {
+      if (Date.now() < selectionLockUntil) return false;
+      const row = document.querySelector('[data-app-action-sidebar-thread-selected="true"]');
+      if (!row) return false;
+      const next = String(row.getAttribute('data-app-action-sidebar-thread-id') || '').replace(/^local:/, '');
+      if (!next || next === selectedId) return false;
+      selectedId = next;
+      return true;
     }
 
     function load(reset) {
@@ -645,6 +700,11 @@
       const row = document.querySelector(`[data-app-action-sidebar-thread-id="local:${id}"]`);
       if (row) row.click();
       else window.electronBridge?.sendMessageFromView?.({ type: 'open-in-main-window', path: `/local/${id}` });
+      // 原生要等一次重渲染才会把 selected 挪过来，先按点击结果乐观标上，
+      // 锁一小段时间，免得这一秒里的 syncSelection 读到旧值把高亮又抹回去。
+      selectedId = id;
+      selectionLockUntil = Date.now() + 1200;
+      applySelection();
       // 列表保持打开，像原生会话列表一样可以连续跳；标签栏开着时它自己会把会话加成标签。
     }
 
@@ -674,6 +734,7 @@
         disposed = true;
         requestId++;
         statusWatch?.(); statusWatch = null;
+        selectionWatch?.disconnect(); selectionWatch = null;
         for (const [, n] of nodes) { n.statusRoot?.dispose(); n.projectRoot?.dispose(); }
         nodes.clear();
         groups.clear();
