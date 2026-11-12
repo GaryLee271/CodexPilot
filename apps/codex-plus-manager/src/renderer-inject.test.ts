@@ -2858,3 +2858,92 @@ describe("跨项目会话列表标题", () => {
     assert.doesNotMatch(source, /const title = String\(session\.title/);
   });
 });
+
+describe("跨项目会话列表时间分区", () => {
+  const fragment = new URL("../../../assets/inject/renderer-inject/62-conversation-list.js", import.meta.url);
+
+  async function group() {
+    const source = await readFile(fragment, "utf8");
+    const match = source.match(/  function cplConversationGroup\([\s\S]*?\n  \}/);
+    assert.ok(match, "分片里要有自包含的 cplConversationGroup");
+    return new Function(`${match![0]}\nreturn cplConversationGroup;`)() as (
+      updatedAt: unknown, now: Date, strings: Record<string, string>, lang: string,
+    ) => { key: string; label: string };
+  }
+
+  const zh = { today: "今天", yesterday: "昨天", earlier: "更早" };
+  const en = { today: "Today", yesterday: "Yesterday", earlier: "Earlier" };
+  // 2026-11-12 是周四。
+  const now = new Date(2026, 10, 12, 10, 30);
+  const seconds = (year: number, month: number, day: number) =>
+    Math.floor(new Date(year, month - 1, day, 9, 0).getTime() / 1000);
+
+  it("今天/昨天/本周星期几/本周之前日期，周一为一周起点", async () => {
+    const fn = await group();
+    assert.equal(fn(seconds(2026, 11, 12), now, zh, "zh").label, "今天");
+    assert.equal(fn(seconds(2026, 11, 11), now, zh, "zh").label, "昨天");
+    assert.equal(fn(seconds(2026, 11, 10), now, zh, "zh").label, "周二");
+    assert.equal(fn(seconds(2026, 11, 9), now, zh, "zh").label, "周一");
+    assert.equal(fn(seconds(2026, 11, 8), now, zh, "zh").label, "11月8日", "周日算上一周");
+    assert.equal(fn(seconds(2026, 11, 7), now, zh, "zh").label, "11月7日");
+  });
+
+  it("跨年补年份，秒与毫秒时间戳都认，无效时间归到更早", async () => {
+    const fn = await group();
+    assert.equal(fn(seconds(2025, 12, 25), now, zh, "zh").label, "2025年12月25日");
+    assert.equal(fn(new Date(2026, 10, 8, 9, 0).getTime(), now, zh, "zh").label, "11月8日", "毫秒时间戳");
+    for (const bad of [0, null, undefined, NaN, "abc"]) {
+      assert.equal(fn(bad, now, zh, "zh").label, "更早");
+      assert.equal(fn(bad, now, zh, "zh").key, "unknown");
+    }
+    assert.equal(fn(seconds(2026, 11, 13), now, zh, "zh").label, "今天", "时钟回拨不单独开组");
+  });
+
+  it("英文文案，同一天共用一个分区", async () => {
+    const fn = await group();
+    assert.equal(fn(seconds(2026, 11, 12), now, en, "en").label, "Today");
+    assert.equal(fn(seconds(2026, 11, 11), now, en, "en").label, "Yesterday");
+    assert.equal(fn(seconds(2026, 11, 10), now, en, "en").label, "Tuesday");
+    assert.equal(fn(seconds(2026, 11, 8), now, en, "en").label, "Nov 8");
+    assert.equal(fn(seconds(2025, 12, 25), now, en, "en").label, "Dec 25, 2025");
+    const morning = fn(seconds(2026, 11, 12), now, en, "en");
+    const evening = fn(Math.floor(new Date(2026, 10, 12, 23, 0).getTime() / 1000), now, en, "en");
+    assert.equal(morning.key, evening.key);
+    assert.notEqual(morning.key, fn(seconds(2026, 11, 11), now, en, "en").key);
+  });
+
+  it("分区标题插入列表并吸顶，分页时按 key 复用节点", async () => {
+    const source = await readFile(fragment, "utf8");
+    // sticky 以滚动容器的 padding box 为基准，容器有上内边距时 top:0 只钉在 padding 下沿，
+    // 上面那条缝会露出滚上来的会话文字；必须实测 padding-top 后用负 top 顶到视口上缘。
+    assert.match(source, /position: sticky; top: var\(--cpl-pin-top, 0px\)/);
+    assert.match(source, /getComputedStyle\(scroller\)\.paddingTop/, "实测滚动容器上内边距");
+    assert.match(source, /setProperty\('--cpl-pin-top', nextTop\)/, "把负的吸顶偏移写进变量");
+    assert.match(source, /background: var\(--cpl-surface-bg/, "底色取实测的列表背景");
+    assert.match(source, /function syncSurface\(\)/, "运行时探测侧栏真实背景色");
+    // 侧栏底色是 oklab() / color(srgb …)，只认 rgb 会一路落回 <html> 的 #f5f5f5，
+    // 又变回一条灰带；必须交给浏览器解析。
+    assert.match(source, /const layer = value && value !== 'transparent' \? parseColor\(value\) : null/);
+    assert.match(source, /getContext\('2d'/, "用 canvas 解析 oklab / color(srgb …)");
+    assert.match(source, /function exactAlpha\(value, fallback\)/, "alpha 取原始精度，避免分层合成偏差");
+    assert.match(source, /\.cpl-group \{[^}]*border-radius: 0/, "不吃原生圆角样式");
+    assert.doesNotMatch(source, /\.cpl-group \{[^}]*(?:opacity|backdrop-filter|rgba\()/, "不用半透明灰块");
+    assert.match(source, /cplConversationGroup\(session\.updatedAt, now, str, langKey\)/);
+    assert.match(source, /wantedGroups\.add\(bucket\.group\.key\)/);
+    assert.match(source, /if \(group\.key !== lastKey\)/);
+    // 标题必须和组内会话同处一个 section：平铺时多个 sticky 会一起钉在 top:0 叠住，
+    // 表现就是上一个分组被下一个盖掉、只露出半截文字。
+    assert.match(source, /\.cpl-section \{ display: block; \}/);
+    assert.match(source, /const box = el\('div', 'cpl-section'\)/);
+    assert.match(source, /g\.box\.append\(g\.item, \.\.\.bucket\.items\)/);
+    // 高度必须落在整数像素上：默认 line-height:1.5 会算出 16.5 / 19.5，
+    // 条目高度带 .5px，滚动时每帧的取整结果来回跳，视觉上就是抖动/发虚。
+    assert.match(source, /\.cpl-group \{[^}]*line-height: 16px/, "分组标题行高取整");
+    assert.match(source, /\.cpl-label \{[^}]*line-height: 20px/, "会话标题行高取整");
+    assert.match(source, /\.cpl-project-name \{[^}]*line-height: 16px/, "项目行行高取整");
+    // 顺序没变就不要 append：搬节点会触发重排 + 滚动锚定，滚动中会抖。
+    assert.match(source, /const kids = g\.box\.children/);
+    assert.match(source, /if \(!same\) g\.box\.append/, "顺序未变时跳过 DOM 搬动");
+    assert.match(source, /\.cpl-list \{[^}]*overflow-anchor: none/, "关掉滚动锚定");
+  });
+});

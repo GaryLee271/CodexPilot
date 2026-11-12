@@ -33,12 +33,14 @@
       title: '最近会话', back: '返回原生列表', loading: '正在读取会话…',
       empty: '没有找到会话', failed: '读取失败：', untitled: '未命名对话',
       noProject: '未关联项目', directory: '目录：', more: '加载更多',
+      today: '今天', yesterday: '昨天', earlier: '更早',
       count: (shown, total) => `已显示 ${shown} / ${total} 条`, limit: '已到列表上限',
     },
     en: {
       title: 'Recent threads', back: 'Back to native list', loading: 'Loading threads…',
       empty: 'No threads found', failed: 'Failed to load: ', untitled: 'Untitled thread',
       noProject: 'No project', directory: 'Folder: ', more: 'Load more',
+      today: 'Today', yesterday: 'Yesterday', earlier: 'Earlier',
       count: (shown, total) => `Showing ${shown} of ${total}`, limit: 'List limit reached',
     },
   };
@@ -49,6 +51,43 @@
   function cleanTitle(value) {
     const flat = String(value || '').replace(/\s+/g, ' ').trim();
     return flat.length > 200 ? flat.slice(0, 200) + '…' : flat;
+  }
+
+  /**
+   * 时间分区：按本地日历日算组。今天 / 昨天用相对词，昨天之前且仍在本周内
+   * （周一为一周起点）显示星期几，本周之前显示实际日期；跨年补年份。
+   * now 与 strings / lang 由调用方传入，方便单测固定「今天」和语言。
+   * Codex 的 updated_at 是秒级时间戳，也兼容毫秒；取不到时间的归到「更早」。
+   */
+  function cplConversationGroup(updatedAt, now, strings, lang) {
+    const weekdays = lang === 'zh'
+      ? ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+      : ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const unknown = { key: 'unknown', label: strings.earlier };
+    const raw = Number(updatedAt);
+    if (!Number.isFinite(raw) || raw <= 0) return unknown;
+    const stamp = new Date(raw < 1e12 ? raw * 1000 : raw);
+    if (Number.isNaN(stamp.getTime())) return unknown;
+    const startOfDay = date => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const today = startOfDay(now);
+    const day = startOfDay(stamp);
+    // 夏令时切换那天只有 23 / 25 小时，round 才能算成同一个日历日差值。
+    const diff = Math.round((today - day) / 86400000);
+    // 周一 = 0，周日 = 6：今天距本周一开始过了几天。
+    const mondayBasedWeekday = (today.getDay() + 6) % 7;
+    let label;
+    if (diff <= 0) label = strings.today;
+    else if (diff === 1) label = strings.yesterday;
+    else if (diff <= mondayBasedWeekday) label = weekdays[stamp.getDay()];
+    else {
+      const month = day.getMonth() + 1, date = day.getDate();
+      const sameYear = day.getFullYear() === now.getFullYear();
+      label = lang === 'zh'
+        ? (sameYear ? `${month}月${date}日` : `${day.getFullYear()}年${month}月${date}日`)
+        : (sameYear ? `${months[day.getMonth()]} ${date}` : `${months[day.getMonth()]} ${date}, ${day.getFullYear()}`);
+    }
+    return { key: `d${day.getFullYear()}-${day.getMonth() + 1}-${day.getDate()}`, label };
   }
 
   function syncCodexPlusConversationList() {
@@ -73,13 +112,14 @@
     let langKey = 'en';
     const abort = new AbortController();
     const opts = { signal: abort.signal };
-    let disposed = false, active = false, style = null;
+    let disposed = false, active = false, style = null, surfaceColor = '', pinTop = '';
     let headerEntry = null, panel = null, listEl = null, statusEl = null, moreButton = null;
     let items = [], total = 0, loading = false, requestId = 0;
     let statusApi = null, statusLoading = false, statusContext = null, statusWatch = null;
     let statusIds = '', statusGeneration = 0;
     let nativeStates = new Map(), nativeProjects = new Map();
     const nodes = new Map();
+    const groups = new Map();
 
     /** 以原生搜索按钮的 aria-label 为准（它就是「搜索」/「Search」），退回家语言标记。 */
     function syncLanguage() {
@@ -117,26 +157,45 @@
            一大段空白，原生列表的滚动高度也跟着错乱。 */
         .cpl-panel { display: none; flex-direction: column; }
         [${CPL_ACTIVE_ATTR}="true"] > .cpl-panel { display: flex; }
-        .cpl-list { padding: 2px 4px; }
+        .cpl-list { padding: 2px 4px; overflow-anchor: none; }
+        /* 每组会话连同标题包一个 section。sticky 的约束框是 section 而不是整个列表：
+           滚到下一组时，上一组标题会被自己 section 的末尾顶走。平铺着放的话多个标题
+           会同时钉在 top:0 叠在一起（分组之间没有会话时尤其明显）。 */
+        .cpl-section { display: block; }
+        /* 时间分区标题：跟着滚动吸顶，直到本组末尾把它顶走。底色由 syncSurface() 实测
+           侧栏真实背景后写进 --cpl-surface-bg，和列表逐像素同色，所以看不出色块；
+           不透明才能挡住滚上来的会话文字。显式清掉圆角/边框，别被原生样式命中。
+           文字用次要色，不能用 opacity —— 那会把整块背景一起变透明。
+           top 不写死 0：sticky 是相对滚动容器的 padding box 定位，容器有上内边距时
+           标题只能钉在 padding 下沿，上面那条缝会露出正在滚动的会话文字。syncSurface()
+           会实测容器 padding-top 写进 --cpl-pin-top（负值），把标题顶到真正的视口上缘。
+           line-height 写绝对值：默认 1.5 会算出 16.5px，标题和条目高度带 .5px 小数，
+           滚动时每帧的像素对齐结果来回跳，看起来就是发虚/抖动。 */
+        .cpl-group { position: sticky; top: var(--cpl-pin-top, 0px); z-index: 1; padding: 10px 8px 4px;
+          border: 0; border-radius: 0; box-shadow: none;
+          font-size: 11px; font-weight: 500; line-height: 16px;
+          color: var(--codex-plus-text-secondary, var(--color-token-text-secondary, inherit));
+          background: var(--cpl-surface-bg, var(--codex-plus-bg-primary, Canvas)); }
+        .cpl-section:first-child > .cpl-group { padding-top: 4px; }
         .cpl-item { border-radius: 8px; }
         .cpl-item:hover { background: rgba(127,127,127,.10); }
         .cpl-open { display: flex; flex-direction: column; gap: 3px; width: 100%; box-sizing: border-box;
           padding: 6px 8px; border: 0; background: transparent; color: inherit; text-align: left;
           cursor: pointer; font: inherit; }
         .cpl-title-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
-        .cpl-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+        .cpl-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; line-height: 20px; }
         .cpl-status { display: inline-flex; align-items: center; flex: none; }
         .cpl-status[hidden] { display: none; }
         .cpl-project { display: flex; align-items: center; gap: 5px; min-width: 0; opacity: .68; }
         .cpl-project-icon { display: inline-flex; width: 12px; height: 12px; flex: none; }
         .cpl-project-icon svg { width: 12px; height: 12px; }
-        .cpl-project-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; flex: 0 1 auto; min-width: 0; }
+        .cpl-project-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; line-height: 16px; flex: 0 1 auto; min-width: 0; }
         /* git 分支：跟在项目名后面，长名字先截断项目名，分支保底留一点宽度。 */
         .cpl-branch { display: inline-flex; align-items: center; gap: 3px; flex: 0 1 auto; min-width: 0; }
         .cpl-branch[hidden] { display: none; }
         .cpl-branch-icon { display: inline-flex; width: 11px; height: 11px; flex: none; }
         .cpl-branch-icon svg { width: 11px; height: 11px; }
-        .cpl-branch-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 96px; font-size: 11px; }
+        .cpl-branch-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 96px; font-size: 11px; line-height: 16px; }
         .cpl-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px;
           padding: 8px 8px 4px; font-size: 12px; opacity: .8; }
         .cpl-more { border: 1px solid rgba(127,127,127,.28); border-radius: 7px;
@@ -144,6 +203,99 @@
         .cpl-more[hidden] { display: none; }
       `;
       document.head.append(style);
+    }
+
+    /**
+     * 把任意 CSS 颜色解析成 [r, g, b, a]。
+     *
+     * 侧栏的底色不是 rgb()：Codex 用的是 `oklab(… / .65)` 和
+     * `color(srgb … / .85)`，只认 rgb 会让整条祖先链全被跳过、一路落到
+     * <html> 的 #f5f5f5 —— 那正是之前一直显示灰条的原因。这里优先让浏览器
+     * 自己解析：画到 1×1 canvas 上再读像素；没有 2d 上下文时才退回 rgb 正则。
+     */
+    let colorProbe;
+    function parseColor(value) {
+      try {
+        if (colorProbe === undefined) {
+          const canvas = document.createElement('canvas');
+          canvas.width = 1; canvas.height = 1;
+          colorProbe = typeof canvas.getContext === 'function'
+            ? canvas.getContext('2d', { willReadFrequently: true }) : null;
+        }
+        if (colorProbe) {
+          const sentinel = 'rgba(0, 0, 0, 0)';
+          colorProbe.clearRect(0, 0, 1, 1);
+          colorProbe.fillStyle = sentinel;
+          colorProbe.fillStyle = value;
+          // 赋值无效时 fillStyle 保持原值，用它判断这种语法能不能解析。
+          if (String(colorProbe.fillStyle) !== sentinel) {
+            colorProbe.fillRect(0, 0, 1, 1);
+            const data = colorProbe.getImageData(0, 0, 1, 1).data;
+            return [data[0], data[1], data[2], data[3] / 255];
+          }
+        }
+      } catch { colorProbe = null; }
+      const match = /^rgba?\(([^)]+)\)$/.exec(value);
+      if (!match) return null;
+      const parts = match[1].split(',').map(part => Number(part.trim()));
+      if (parts.length < 3 || !parts.every(Number.isFinite)) return null;
+      return [parts[0], parts[1], parts[2], parts.length > 3 ? parts[3] : 1];
+    }
+
+    /** canvas 读回的 alpha 只有 8 位精度（.65 → .651），逐层累加会偏差一个色阶，
+        能从原始字符串里取到精确值就取。 */
+    function exactAlpha(value, fallback) {
+      const slash = /\/\s*([0-9.]+)\s*\)/.exec(value);
+      const legacy = /^rgba\(\s*[0-9.]+\s*,\s*[0-9.]+\s*,\s*[0-9.]+\s*,\s*([0-9.]+)\s*\)$/.exec(value);
+      const alpha = Number(slash ? slash[1] : legacy ? legacy[1] : NaN);
+      return Number.isFinite(alpha) ? Math.min(1, Math.max(0, alpha)) : fallback;
+    }
+
+    /**
+     * 吸顶标题要和列表背景逐像素一致，不能靠猜主题变量：Codex 的
+     * --color-token-bg-primary 在当前主题下是浅灰，侧栏实际却是白的，
+     * 套上去就是一块显眼的灰条。这里从滚动容器沿祖先链读出真实背景色，
+     * 半透明层按 alpha 合成，最后写成一个不透明的 rgb() 给 CSS 用。
+     *
+     * 顺带量一次滚动容器的 padding-top：sticky 以 padding box 为基准，
+     * 不把这层内边距补掉，标题就贴不住视口上缘，上面会留一条露字的缝。
+     */
+    function syncSurface() {
+      if (typeof getComputedStyle !== 'function') return;
+      const scroller = document.querySelector(CPL_SCROLL_SELECTOR);
+      if (scroller) {
+        const pad = Number.parseFloat(getComputedStyle(scroller).paddingTop);
+        const nextTop = Number.isFinite(pad) && pad > 0 ? `${-pad}px` : '0px';
+        if (nextTop !== pinTop) {
+          pinTop = nextTop;
+          document.documentElement.style.setProperty('--cpl-pin-top', nextTop);
+        }
+      }
+      let node = scroller || document.body;
+      const layers = [];
+      while (node && node.nodeType === 1) {
+        const value = String(getComputedStyle(node).backgroundColor || '').trim();
+        const layer = value && value !== 'transparent' ? parseColor(value) : null;
+        if (layer) {
+          const alpha = exactAlpha(value, layer[3]);
+          if (alpha > 0) {
+            layers.push([layer[0], layer[1], layer[2], alpha]);
+            if (alpha >= 1) break;
+          }
+        }
+        node = node.parentElement;
+      }
+      // 读不到可解析的背景（或环境没有布局）时别写变量，交给 CSS 的语义色兜底。
+      if (!layers.length) return;
+      let color = [255, 255, 255];
+      for (let i = layers.length - 1; i >= 0; i -= 1) {
+        const [r, g, b, a] = layers[i];
+        color = [r * a + color[0] * (1 - a), g * a + color[1] * (1 - a), b * a + color[2] * (1 - a)];
+      }
+      const next = `rgb(${color.map(Math.round).join(',')})`;
+      if (next === surfaceColor) return;
+      surfaceColor = next;
+      document.documentElement.style.setProperty('--cpl-surface-bg', next);
     }
 
     /**
@@ -247,6 +399,7 @@
     function sync() {
       if (disposed) return;
       installStyle();
+      syncSurface();
       syncLanguage();
       ensureHeaderEntry();
       const scroll = document.querySelector(CPL_SCROLL_SELECTOR);
@@ -257,6 +410,7 @@
       if (!panel?.isConnected) {
         for (const [, n] of nodes) { n.statusRoot?.dispose(); n.projectRoot?.dispose(); }
         nodes.clear();
+        groups.clear();
         panel = buildPanel();
         scroll.append(panel);
         render();
@@ -315,6 +469,22 @@
       return n;
     }
 
+    /** 分组标题按 key 复用：分页追加、语言切换、状态刷新都只改文本，不重建 DOM。
+        标题连同组内会话放在同一个 section 里，sticky 才有「被本组末尾顶走」的边界。 */
+    function groupNode(group) {
+      let g = groups.get(group.key);
+      if (g) return g;
+      const box = el('div', 'cpl-section');
+      box.setAttribute('data-codex-plus-ext', CPL_EXT);
+      const item = el('div', 'cpl-group');
+      item.setAttribute('data-codex-plus-ext', CPL_EXT);
+      item.setAttribute('role', 'presentation');
+      box.append(item);
+      g = { box, item, label: null };
+      groups.set(group.key, g);
+      return g;
+    }
+
     function render() {
       if (!listEl || !moreButton) return;
       // 后端已按 updated_at DESC 返回；同一秒内用 id 兜底，避免刷新时顺序跳动。
@@ -364,10 +534,40 @@
         }
         n.item.title = [title, name, branch, session.cwd].filter(Boolean).join('\n');
       });
-      let ref = listEl.firstElementChild;
+      // 时间分区只改展示：ordered 仍按 updated_at 倒序，遇到新日期就开一个新 section。
+      // 分页跨到同一天时 section 按 key 复用，不会重复；没有会话的日期自然不出现。
+      const now = new Date();
+      const buckets = [];
+      let lastKey = null;
       for (const session of ordered) {
-        const item = nodes.get(session.id).item;
-        if (item === ref) ref = ref.nextElementSibling; else listEl.insertBefore(item, ref);
+        const group = cplConversationGroup(session.updatedAt, now, str, langKey);
+        if (group.key !== lastKey) { buckets.push({ group, items: [] }); lastKey = group.key; }
+        buckets[buckets.length - 1].items.push(nodes.get(session.id).item);
+      }
+      const wantedGroups = new Set();
+      for (const bucket of buckets) {
+        const g = groupNode(bucket.group);
+        if (g.label !== bucket.group.label) { g.label = bucket.group.label; g.item.textContent = bucket.group.label; }
+        wantedGroups.add(bucket.group.key);
+        // 标题永远在组首，组内会话按顺序跟在后面；换组的会话节点会被 append 直接搬过来。
+        // 顺序没变就别碰 DOM：append 即使搬的是同一批节点，也会先摘再插、触发重排和
+        // 滚动锚定，会话状态每秒刷新时列表就会跟着抖一下。
+        const kids = g.box.children;
+        let same = kids.length === bucket.items.length + 1 && kids[0] === g.item;
+        if (same) {
+          for (let i = 0; i < bucket.items.length; i += 1) {
+            if (kids[i + 1] !== bucket.items[i]) { same = false; break; }
+          }
+        }
+        if (!same) g.box.append(g.item, ...bucket.items);
+      }
+      for (const [key, g] of groups) {
+        if (!wantedGroups.has(key)) { g.box.remove(); groups.delete(key); }
+      }
+      let ref = listEl.firstElementChild;
+      for (const bucket of buckets) {
+        const box = groups.get(bucket.group.key).box;
+        if (box === ref) ref = ref.nextElementSibling; else listEl.insertBefore(box, ref);
       }
       const canMore = items.length < total && items.length < CPL_MAX_ITEMS;
       moreButton.hidden = !canMore;
@@ -470,6 +670,7 @@
         statusWatch?.(); statusWatch = null;
         for (const [, n] of nodes) { n.statusRoot?.dispose(); n.projectRoot?.dispose(); }
         nodes.clear();
+        groups.clear();
         headerEntry?.remove();
         headerEntry = null;
         panel?.remove();
