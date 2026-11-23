@@ -291,7 +291,7 @@
     const current = composerPrediction;
     composerPrediction = null;
     current?.controller.abort();
-    current?.button?.remove();
+    current?.restorePlaceholder?.();
   }
 
   function syncComposerPrediction(turnId = null, eventThread = null) {
@@ -314,7 +314,7 @@
     if (composerPrediction?.thread === thread && composerPrediction.editor === editor &&
         composerPrediction.model === model && (!turnId || turnId === composerPrediction.turnId)) return;
     clearComposerPrediction();
-    const current = { thread, editor, model, turnId, controller: new AbortController(), button: null };
+    const current = { thread, editor, model, turnId, controller: new AbortController(), restorePlaceholder: null };
     composerPrediction = current;
     const signal = current.controller.signal;
     const valid = () => composerPrediction === current && !signal.aborted && editor.isConnected &&
@@ -323,26 +323,30 @@
     editor.addEventListener("input", clearComposerPrediction, { once: true, signal });
     Promise.resolve(predictions.composerSuggestion(thread, turnId, signal)).then((text) => {
       if (!text || !valid()) return;
-      const button = document.createElement("button");
-      button.type = "button";
-      button.setAttribute("data-codex-plus-ext", "composer-prediction");
-      button.setAttribute("data-codex-plus-prediction", "");
-      button.style.cssText = "display:block;text-align:start;opacity:.65;padding:2px 8px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
-      button.textContent = `${text}  ⇥`;
-      button.title = "按 Tab 接受为草稿";
-      current.button = button;
+      // 复用空段落原有的 ::before，灰字与光标共享起点和字号，也不会改变输入区高度。
+      const paragraph = editor.querySelector(":scope > p[data-placeholder]");
+      if (!paragraph) return;
+      // 编辑器会自行重建段落装饰；用临时样式覆盖占位文案，保留其原始 DOM 属性。
+      const style = document.createElement("style");
+      style.setAttribute("data-codex-plus-ext", "composer-prediction");
+      editor.setAttribute("data-codex-plus-inline-hint", "");
+      style.textContent = `[data-codex-plus-inline-hint] > p[data-placeholder]::before { content: "${CSS.escape(text)}  ⇥" !important; }`;
+      document.head.append(style);
+      current.restorePlaceholder = () => {
+        editor.removeAttribute("data-codex-plus-inline-hint");
+        style.remove();
+      };
       const accept = () => {
         if (!valid() || !codexPlusInsertComposerText(editor, text)) return false;
         clearComposerPrediction();
         return true;
       };
-      button.addEventListener("click", accept, { signal });
+      paragraph.addEventListener("click", accept, { signal });
       editor.addEventListener("keydown", (event) => {
         if (event.key !== "Tab" || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey || event.isComposing || event.defaultPrevented) return;
         if (accept()) { event.preventDefault(); event.stopPropagation(); }
       }, { capture: true, signal });
-      editor.parentElement.insertBefore(button, editor);
-    }).catch(() => { if (composerPrediction === current) current.button?.remove(); });
+    }).catch(() => { if (composerPrediction === current) clearComposerPrediction(); });
   }
 
   function refreshCodexPlusComposerActions() {

@@ -126,3 +126,31 @@ test("热注入移除旧分类的界面并让旧额度包装回传真实数据",
   env.api.sync();
   assert.equal(env.domListeners.length, 0, "退役分类不再安装 DOM 监听");
 });
+
+test("预测复用首段占位文字，清理时恢复原样", async () => {
+  const source = read("92-extension-host.js");
+  const paragraph = new EventTarget();
+  const editor = Object.assign(new EventTarget(), {
+    isConnected: true, textContent: "", querySelector: () => paragraph,
+    setAttribute: (key: string) => attributes.add(key), removeAttribute: (key: string) => attributes.delete(key),
+  });
+  const attributes = new Set<string>();
+  const styles: any[] = [];
+  const document = { createElement: (tag: string) => {
+    assert.equal(tag, "style");
+    return { setAttribute() {}, remove() { styles.pop(); } };
+  }, head: { append: (style: unknown) => styles.push(style) } };
+  const window = { codexPlus: { currentSession: () => ({ id: "local-test" }), currentSessionId: () => "local-test" },
+    __codexPlusNativeFastUnlock: { needsComposerFallback: () => true },
+    __codexPlusNativePredictions: { state: {}, runtime: { relax: () => true }, composerSuggestion: async () => "继续" } };
+  const { sync, clear } = new Function("window", "document", "CSS", "codexPlusComposerActionHosts",
+    `let composerPrediction; ${extract(source, "clearComposerPrediction")} ${extract(source, "syncComposerPrediction")}
+    return {sync:syncComposerPrediction, clear:clearComposerPrediction};`)(window, document, { escape: (s: string) => s }, () => [{ editor }]);
+  sync();
+  await Promise.resolve();
+  assert.match(styles[0].textContent, /p\[data-placeholder\]::before.*继续/);
+  assert.equal(editor.textContent, "");
+  clear();
+  assert.equal(styles.length, 0);
+  assert.equal(attributes.size, 0);
+});
