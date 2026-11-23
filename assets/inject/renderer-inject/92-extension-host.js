@@ -284,6 +284,67 @@
     return document.execCommand("insertText", false, text);
   }
 
+  // CSP 禁止加载预测补丁时，借用现有输入框宿主。请求、草稿和接受动作均绑定同一编辑器及会话。
+  let composerPrediction = null;
+
+  function clearComposerPrediction() {
+    const current = composerPrediction;
+    composerPrediction = null;
+    current?.controller.abort();
+    current?.button?.remove();
+  }
+
+  function syncComposerPrediction(turnId = null, eventThread = null) {
+    const predictions = window.__codexPlusNativePredictions;
+    if (!predictions?.runtime.relax("local") || !window.__codexPlusNativeFastUnlock?.needsComposerFallback?.()) {
+      if (composerPrediction) clearComposerPrediction();
+      return;
+    }
+    const session = window.codexPlus?.currentSession();
+    const thread = session?.id || window.codexPlus?.currentSessionId();
+    if (eventThread && eventThread !== thread) return;
+    const hosts = codexPlusComposerActionHosts();
+    const editor = hosts.length === 1 ? hosts[0].editor : null;
+    const draft = () => (editor?.value ?? editor?.textContent ?? "").trim();
+    if (!thread || session?.remote || !editor || draft()) {
+      if (composerPrediction) clearComposerPrediction();
+      return;
+    }
+    const model = predictions.state.settings?.codexAppNativePredictionsModel;
+    if (composerPrediction?.thread === thread && composerPrediction.editor === editor &&
+        composerPrediction.model === model && (!turnId || turnId === composerPrediction.turnId)) return;
+    clearComposerPrediction();
+    const current = { thread, editor, model, turnId, controller: new AbortController(), button: null };
+    composerPrediction = current;
+    const signal = current.controller.signal;
+    const valid = () => composerPrediction === current && !signal.aborted && editor.isConnected &&
+      !draft() && predictions.runtime.relax("local") && predictions.state.preference !== false &&
+      predictions.state.settings?.codexAppNativePredictionsModel === model && window.codexPlus?.currentSessionId() === thread;
+    editor.addEventListener("input", clearComposerPrediction, { once: true, signal });
+    Promise.resolve(predictions.composerSuggestion(thread, turnId, signal)).then((text) => {
+      if (!text || !valid()) return;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.setAttribute("data-codex-plus-ext", "composer-prediction");
+      button.setAttribute("data-codex-plus-prediction", "");
+      button.style.cssText = "display:block;text-align:start;opacity:.65;padding:2px 8px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+      button.textContent = `${text}  ⇥`;
+      button.title = "按 Tab 接受为草稿";
+      current.button = button;
+      const accept = () => {
+        if (!valid() || !codexPlusInsertComposerText(editor, text)) return false;
+        clearComposerPrediction();
+        return true;
+      };
+      button.addEventListener("click", accept, { signal });
+      editor.addEventListener("keydown", (event) => {
+        if (event.key !== "Tab" || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey || event.isComposing || event.defaultPrevented) return;
+        if (accept()) { event.preventDefault(); event.stopPropagation(); }
+      }, { capture: true, signal });
+      editor.parentElement.insertBefore(button, editor);
+    }).catch(() => { if (composerPrediction === current) current.button?.remove(); });
+  }
+
   function refreshCodexPlusComposerActions() {
     const items = codexPlusExtensionItems(codexPlusRegistry.composerActions);
     const hosts = items.length ? codexPlusComposerActionHosts() : [];

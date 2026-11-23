@@ -2395,7 +2395,7 @@ async fn reload_page_for_extension_preloads(debug_port: u16) -> anyhow::Result<(
 // 仅在用户启动 Codex 的流程里重载一次；心跳重注入不重载正在使用的页面。
 async fn apply_native_module_patches_on_launch(debug_port: u16) -> anyhow::Result<()> {
     anyhow::ensure!(debug_port != 0, "Codex 调试端口不能为 0");
-    let probe = "JSON.stringify({ready:window.__codexPlusNativeFastAssetPatchReady===true,compiled:window.__codexPlusNativeFastCompiled==='v1',failed:['unsupported','failed'].includes(window.__codexPlusNativeFastPatchState),appReady:!!document.querySelector('[data-app-shell-main-surface]')})";
+    let probe = "JSON.stringify({ready:window.__codexPlusNativeFastAssetPatchReady===true,compiled:window.__codexPlusNativeFastCompiled==='v1',pagePolicy:window.__codexPlusNativeFastPatchState==='page-policy',failed:['unsupported','failed'].includes(window.__codexPlusNativeFastPatchState),appReady:!!document.querySelector('[data-app-shell-main-surface]')})";
     // 复用后台服务时，launch_codex 返回不代表新进程的 CDP 或 watchdog 重注入已经就绪。
     // 每轮重新发现主页面，覆盖端口拒连、页面尚未出现和页面换代；准备完成前绝不能提前重载。
     // 补丁块准备完成不代表原生首次启动完成，必须等主界面挂载，避免重载打断初始化握手。
@@ -2418,7 +2418,7 @@ async fn apply_native_module_patches_on_launch(debug_port: u16) -> anyhow::Resul
                 }
                 .await;
                 if let Ok((websocket_url, state)) = result {
-                    if state.compiled && state.app_ready {
+                    if (state.compiled || state.page_policy) && state.app_ready {
                         return anyhow::Ok((websocket_url, true));
                     }
                     anyhow::ensure!(!state.failed, "当前 Codex 资产不支持原生模块补丁，保留原生界面");
@@ -2463,6 +2463,7 @@ async fn apply_native_module_patches_on_launch(debug_port: u16) -> anyhow::Resul
 struct NativeModuleLaunchState {
     prepared: bool,
     compiled: bool,
+    page_policy: bool,
     failed: bool,
     app_ready: bool,
 }
@@ -2480,6 +2481,7 @@ fn native_module_launch_state(result: &Value) -> NativeModuleLaunchState {
     NativeModuleLaunchState {
         prepared: value.get("ready").and_then(Value::as_bool) == Some(true),
         compiled: value.get("compiled").and_then(Value::as_bool) == Some(true),
+        page_policy: value.get("pagePolicy").and_then(Value::as_bool) == Some(true),
         failed: value.get("failed").and_then(Value::as_bool) == Some(true),
         app_ready: value.get("appReady").and_then(Value::as_bool) == Some(true),
     }

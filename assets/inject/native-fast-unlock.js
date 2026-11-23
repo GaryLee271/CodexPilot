@@ -890,6 +890,22 @@
     }
   }
 
+  // Chromium 158 的动态 import 会重新检查页面 CSP。检测到明确禁用 blob 脚本时，
+  // 保留原生模块图，由输入框增强层显示预测，避免启动壳超时后再次刷新。
+  function needsComposerFallback(document = root.document, agent = root.navigator?.userAgent) {
+    const major = Number(/(?:Chrome|Chromium)\/(\d+)/.exec(agent ?? "")?.[1]);
+    if (!(major >= 158) || !document?.querySelectorAll) return false;
+    return [...document.querySelectorAll('meta[http-equiv="Content-Security-Policy" i]')].some((meta) => {
+      const directives = new Map();
+      for (const part of meta.content.split(";")) {
+        const [key, ...sources] = part.trim().split(/\s+/);
+        if (!directives.has(key.toLowerCase())) directives.set(key.toLowerCase(), sources);
+      }
+      const scripts = directives.get("script-src-elem") ?? directives.get("script-src") ?? directives.get("default-src");
+      return scripts !== undefined && !scripts.includes("blob:");
+    });
+  }
+
   async function prepareDocumentModules(options = {}) {
     const location = options.location ?? root.location;
     const document = options.document ?? root.document;
@@ -898,6 +914,9 @@
     }
     const active = activeRewriters();
     if (!active.length) return { ok: false, modules: [], diagnostics: { reason: "disabled", rewriters: {} } };
+    if (needsComposerFallback(document)) {
+      return { ok: false, modules: [], diagnostics: { reason: "page-csp-blocks-blob-modules", rewriters: {} } };
+    }
     // Rspack 不再保留语义文件名。后端只读当前安装包，给出含预测 / 分区锚点的同源候选；
     // 文件内容仍从当前页面获取，完整结构与跨块唯一性仍由 prepareModules 校验。
     if (Array.isArray(options.assetUrls) && options.assetUrls.length > 0) {
@@ -1052,7 +1071,7 @@
 
   const api = {
     plan, transform, prepareModule, installModule, runtime,
-    registerRewriter, transformModule, prepareModules, discoverModules, prepareDocumentModules, installModules,
+    registerRewriter, transformModule, prepareModules, discoverModules, prepareDocumentModules, installModules, needsComposerFallback,
   };
   if (typeof module === "object" && module.exports) module.exports = api;
   if (typeof window === "object") window.__codexPlusNativeFastUnlock = api;

@@ -7494,6 +7494,8 @@
             // 转发失败（例如内核尚未初始化）不能影响 Codex 自己的通知处理。
             try {
               codexPlusEmitExtensionEvent(`codex/${method}`, [params, { method }]);
+              // 始终找当前文档的处理器，心跳重注入后旧 dispatcher 订阅仍然可用。
+              if (method === "turn/completed" || method === "turn/started") window.__codexPlusComposerPredictionTurn?.(method, params);
             } catch {}
           });
         } catch {
@@ -8871,6 +8873,67 @@
     if (!editor || typeof text !== "string" || !text) return false;
     editor.focus();
     return document.execCommand("insertText", false, text);
+  }
+
+  // CSP 禁止加载预测补丁时，借用现有输入框宿主。请求、草稿和接受动作均绑定同一编辑器及会话。
+  let composerPrediction = null;
+
+  function clearComposerPrediction() {
+    const current = composerPrediction;
+    composerPrediction = null;
+    current?.controller.abort();
+    current?.button?.remove();
+  }
+
+  function syncComposerPrediction(turnId = null, eventThread = null) {
+    const predictions = window.__codexPlusNativePredictions;
+    if (!predictions?.runtime.relax("local") || !window.__codexPlusNativeFastUnlock?.needsComposerFallback?.()) {
+      if (composerPrediction) clearComposerPrediction();
+      return;
+    }
+    const session = window.codexPlus?.currentSession();
+    const thread = session?.id || window.codexPlus?.currentSessionId();
+    if (eventThread && eventThread !== thread) return;
+    const hosts = codexPlusComposerActionHosts();
+    const editor = hosts.length === 1 ? hosts[0].editor : null;
+    const draft = () => (editor?.value ?? editor?.textContent ?? "").trim();
+    if (!thread || session?.remote || !editor || draft()) {
+      if (composerPrediction) clearComposerPrediction();
+      return;
+    }
+    const model = predictions.state.settings?.codexAppNativePredictionsModel;
+    if (composerPrediction?.thread === thread && composerPrediction.editor === editor &&
+        composerPrediction.model === model && (!turnId || turnId === composerPrediction.turnId)) return;
+    clearComposerPrediction();
+    const current = { thread, editor, model, turnId, controller: new AbortController(), button: null };
+    composerPrediction = current;
+    const signal = current.controller.signal;
+    const valid = () => composerPrediction === current && !signal.aborted && editor.isConnected &&
+      !draft() && predictions.runtime.relax("local") && predictions.state.preference !== false &&
+      predictions.state.settings?.codexAppNativePredictionsModel === model && window.codexPlus?.currentSessionId() === thread;
+    editor.addEventListener("input", clearComposerPrediction, { once: true, signal });
+    Promise.resolve(predictions.composerSuggestion(thread, turnId, signal)).then((text) => {
+      if (!text || !valid()) return;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.setAttribute("data-codex-plus-ext", "composer-prediction");
+      button.setAttribute("data-codex-plus-prediction", "");
+      button.style.cssText = "display:block;text-align:start;opacity:.65;padding:2px 8px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+      button.textContent = `${text}  ⇥`;
+      button.title = "按 Tab 接受为草稿";
+      current.button = button;
+      const accept = () => {
+        if (!valid() || !codexPlusInsertComposerText(editor, text)) return false;
+        clearComposerPrediction();
+        return true;
+      };
+      button.addEventListener("click", accept, { signal });
+      editor.addEventListener("keydown", (event) => {
+        if (event.key !== "Tab" || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey || event.isComposing || event.defaultPrevented) return;
+        if (accept()) { event.preventDefault(); event.stopPropagation(); }
+      }, { capture: true, signal });
+      editor.parentElement.insertBefore(button, editor);
+    }).catch(() => { if (composerPrediction === current) current.button?.remove(); });
   }
 
   function refreshCodexPlusComposerActions() {
@@ -10431,6 +10494,7 @@
     installCodexPlusNavigationEntries();
     // 输入区 footer 会随会话切换、首页与对话页切换而重建，拓展的输入区按钮每轮补一次（按指纹幂等）。
     refreshCodexPlusComposerActions();
+    syncComposerPrediction();
     // 消息插槽与侧边面板：消息、顶栏都会重建，按指纹幂等补齐；对话内容变化由插槽自己的观察器跟。
     refreshCodexPlusMessageSlots();
     refreshCodexPlusSidePanels();
@@ -10833,6 +10897,14 @@
   // 用户脚本的注入晚于本脚本，不会撞上这个时间点。
   installCodexPlusBuiltinServices();
   window.codexPlus = buildCodexPlusExtensionApi();
+  // 重注入时撤掉旧文档上下文的请求、监听器和提示节点。
+  window.__codexPlusClearComposerPrediction?.();
+  window.__codexPlusClearComposerPrediction = clearComposerPrediction;
+  window.__codexPlusComposerPredictionTurn = (method, params) => {
+    if (!params?.threadId || params.threadId !== window.codexPlus.currentSessionId()) return;
+    if (method === "turn/started") clearComposerPrediction();
+    else if (params.turn?.status === "completed" && params.turn.id) syncComposerPrediction(params.turn.id, params.threadId);
+  };
   // 内置功能挂到拓展内核上；下发停用 / 顶替状态后会再次对齐。
   window.__codexPlusSyncBuiltinExtensions = syncCodexPlusBuiltinExtensions;
   syncCodexPlusBuiltinExtensions();

@@ -30,6 +30,14 @@
   // 用户脚本的注入晚于本脚本，不会撞上这个时间点。
   installCodexPlusBuiltinServices();
   window.codexPlus = buildCodexPlusExtensionApi();
+  // 重注入时撤掉旧文档上下文的请求、监听器和提示节点。
+  window.__codexPlusClearComposerPrediction?.();
+  window.__codexPlusClearComposerPrediction = clearComposerPrediction;
+  window.__codexPlusComposerPredictionTurn = (method, params) => {
+    if (!params?.threadId || params.threadId !== window.codexPlus.currentSessionId()) return;
+    if (method === "turn/started") clearComposerPrediction();
+    else if (params.turn?.status === "completed" && params.turn.id) syncComposerPrediction(params.turn.id, params.threadId);
+  };
   // 内置功能挂到拓展内核上；下发停用 / 顶替状态后会再次对齐。
   window.__codexPlusSyncBuiltinExtensions = syncCodexPlusBuiltinExtensions;
   syncCodexPlusBuiltinExtensions();

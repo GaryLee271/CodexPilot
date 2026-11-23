@@ -404,6 +404,26 @@ function selectedModelHarness({ latestTurnId = "turn-1", completed = true, holdH
 async function runSelectedModelTests() {
   {
     const h = selectedModelHarness();
+    const signal = new AbortController().signal;
+    assert.equal(await h.api.composerSuggestion("thread-1", "stale", signal), null);
+    // 普通窗口没有扩展事件桥时，仍需收到本机会话结束通知。
+    const forwarded = [];
+    h.window.__codexPlusComposerPredictionTurn = (method, params) => forwarded.push([method, params]);
+    const params = { threadId: "thread-1", turn: { id: "turn-1", status: "completed" } };
+    for (const hostId of ["remote", "local"]) {
+      h.deliver({ type: "mcp-notification", hostId, method: "turn/completed", params });
+    }
+    assert.deepEqual(forwarded, [["turn/completed", params]]);
+    const pending = h.api.composerSuggestion("thread-1", null, signal);
+    await flush();
+    assert.equal(h.calls.length, 1);
+    h.calls[0].resolve({ text: '{"suggestion":"补一个测试"}' });
+    assert.equal(await pending, "补一个测试");
+    h.api.observePreference(false);
+    assert.equal(await h.api.composerSuggestion("thread-1", "turn-1", signal), null);
+  }
+  {
+    const h = selectedModelHarness();
     const first = h.api.request({}, target(), null, null, () => true);
     const second = h.api.request({}, target(), null, null, null);
     await flush();
@@ -693,6 +713,13 @@ function moduleList(overrides = {}) {
 }
 
 async function runChannelTests() {
+  {
+    const { channel } = channelHarness();
+    const policy = (content) => ({ querySelectorAll: () => [{ content }] });
+    assert.equal(channel.needsComposerFallback(policy("script-src 'self'"), "Chrome/158.0"), true);
+    assert.equal(channel.needsComposerFallback(policy("script-src 'self'; script-src-elem 'self' blob:"), "Chrome/158.0"), false);
+    assert.equal(channel.needsComposerFallback(policy("script-src 'self'"), "Chrome/157.0"), false);
+  }
   // 数字 chunk 只读候选由后端提供，JS 仍须逐块校验并保持整体失败回退。
   {
     const env = channelHarness();

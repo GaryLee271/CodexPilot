@@ -724,6 +724,21 @@
     })();
   }
 
+  // 兼容模式只在用户已开启 Pilot 预测的本机窗口运行。读取最新回合后再采样，
+  // 前台会话、草稿或模型变化时由调用方的 signal 作废结果，避免串到下一条对话。
+  async function composerSuggestion(threadId, turnId, signal) {
+    if (!threadId || signal.aborted || !runtime.relax("local") || state.preference === false) return null;
+    const details = await threadProvider(threadId);
+    if (!customProvider(details?.provider) || signal.aborted) return null;
+    const result = await request("thread/turns/list", { threadId, sortDirection: "desc", limit: 1, itemsView: "full" });
+    const latest = result?.result?.data?.[0];
+    if (!latest?.id || latest.status !== "completed" || (turnId && latest.id !== turnId) || signal.aborted) return null;
+    const target = { hostId: "local", threadId, latestTurnId: latest.id, generationTrigger: turnId ? "live" : "catch_up" };
+    if (!runtime.relax("local") || state.preference === false) return null;
+    const suggestion = await sample(target, signal, details);
+    return signal.aborted ? null : suggestion?.text ?? null;
+  }
+
   const api = {
     plan,
     transform,
@@ -733,6 +748,7 @@
     observePreference,
     remoteConfig,
     request: requestPrediction,
+    composerSuggestion,
     prompt,
     parseSuggestion,
     deadlineMs: sampleDeadlineMs,
@@ -740,6 +756,16 @@
   };
   if (typeof module === "object" && module.exports) module.exports = api;
   if (typeof window === "object") {
+    // 独立于旧版请求监听器注册，确保已打开的窗口在热更新后也能收到回合结束事件。
+    if (!state.composerTurnListener && typeof root.addEventListener === "function") {
+      state.composerTurnListener = ({ data }) => {
+        if (data?.type === "mcp-notification" && data.hostId === "local" &&
+            (data.method === "turn/completed" || data.method === "turn/started")) {
+          root.__codexPlusComposerPredictionTurn?.(data.method, data.params);
+        }
+      };
+      root.addEventListener("message", state.composerTurnListener);
+    }
     window.__codexPlusNativePredictions = api;
     window.__codexPlusNativeFastUnlock?.registerRewriter?.(rewriter);
   }

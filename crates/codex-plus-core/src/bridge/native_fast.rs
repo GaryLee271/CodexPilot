@@ -226,6 +226,14 @@ async fn initialize_module(
             "rewriters": value.pointer("/diagnostics/rewriters").cloned().unwrap_or(Value::Null),
         }),
     );
+    if value.pointer("/diagnostics/reason").and_then(Value::as_str)
+        == Some("page-csp-blocks-blob-modules")
+    {
+        // 页面的脚本策略禁止 blob import。保留原模块图，预测交给普通输入框增强层。
+        publish_patch_state(session, "page-policy").await;
+        publish_failure_reason(session, Some("page-csp-blocks-blob-modules")).await;
+        return Ok(());
+    }
     if value["ok"] != true {
         // Fast 的原因最具体；没有时用整体原因。只取脚本自己产生的原因码，限长。
         state.failure_reason = value

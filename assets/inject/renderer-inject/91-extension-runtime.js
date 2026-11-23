@@ -683,6 +683,8 @@
             // 转发失败（例如内核尚未初始化）不能影响 Codex 自己的通知处理。
             try {
               codexPlusEmitExtensionEvent(`codex/${method}`, [params, { method }]);
+              // 始终找当前文档的处理器，心跳重注入后旧 dispatcher 订阅仍然可用。
+              if (method === "turn/completed" || method === "turn/started") window.__codexPlusComposerPredictionTurn?.(method, params);
             } catch {}
           });
         } catch {
