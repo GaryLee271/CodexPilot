@@ -224,8 +224,8 @@
     { name: "app-initial", prefix: "app-initial-", unique: true, entry: true, anchors: ["4290031608", "cumberbatch-has-accepted-prediction-1"] },
     // 26.1027 的输入框由 app-runtime → asb-conversation-page 懒加载；旧版仍经 app-initial 进入。
     { name: "composer-content", prefix: "composer-content-", via: ["app-initial-", "app-runtime-", "asb-conversation-page-"], anchors: ["requestUserMessagePrediction", "catch_up"] },
-    // 实时预测函数只迁移了模块，内部绑定契约未变；保留严格结构校验并兼容两个已知位置。
-    { name: "initialize-app-host-services", prefix: "initialize-app-host-services-", aliases: ["renderer-app-server-managers-"], via: ["app-main-", "app-runtime-"], anchors: ["requestUserMessagePrediction", "getCachedConversationMetadata"] },
+    // 新版启动可能先执行实时预测块，可用性门控块随后按需加载；两处都能提供模块执行完成信号。
+    { name: "initialize-app-host-services", prefix: "initialize-app-host-services-", entry: true, aliases: ["renderer-app-server-managers-"], via: ["app-main-", "app-runtime-"], anchors: ["requestUserMessagePrediction", "getCachedConversationMetadata"] },
     { name: "general-settings", prefix: "general-settings-", via: ["app-main-", "app-runtime-", "settings-lazy-routes-"], anchors: ["cumberbatch-availability", "settings.general.messagePredictions.label"] },
   ];
 

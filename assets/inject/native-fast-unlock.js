@@ -587,7 +587,7 @@
     return { source: chunks.join(""), counts };
   }
 
-  // 入口模块（app-initial）追加执行完成标记；启动守护和重载探针都只看这一个标记。
+  // 可在启动时执行的目标块追加同一个完成标记，启动守护与重载探针都读取它。
   const completionMarker = 'window.__codexPlusNativeFastCompiled="v1";';
   function entryModuleSource(source, url) {
     return `${source}\n;${completionMarker}window.__codexPlusNativeFastPatchState="patched";window.__codexPlusNativeFastModuleComplete?.();\n//# sourceURL=${url}\n`;
@@ -997,9 +997,9 @@
         document.removeEventListener("DOMContentLoaded", armWatchdog);
         if (root.__codexPlusNativeFastModuleComplete === complete) delete root.__codexPlusNativeFastModuleComplete;
       };
-      // 懒加载块的预加载失败会让之后的 import 直接报错，即使入口已执行也要回退一次。
-      const recover = (reason, lazyModule = false) => {
-        if (recovering || !lazyModule && root.__codexPlusNativeFastCompiled === "v1") return;
+      // 完成标记只证明至少一块执行成功；任意其他块预加载失败都会影响后续 import。
+      const recover = (reason) => {
+        if (recovering) return;
         recovering = true;
         cleanup();
         failed(reason);
@@ -1027,11 +1027,11 @@
         // 不监听普通 error/unhandledrejection。只检查目标模块自己的执行完成标记。
         watchdog = root.setTimeout(() => {
           watchdog = null;
-          recover("module-execution-timeout");
+          if (root.__codexPlusNativeFastCompiled !== "v1") recover("module-execution-timeout");
         }, 30000);
       };
-      preloads.forEach((preload, index) => {
-        preload.onerror = () => recover("module-preload-failed", index > 0);
+      preloads.forEach((preload) => {
+        preload.onerror = () => recover("module-preload-failed");
       });
       temporaryRoot = document.createElement("html");
       document.appendChild(temporaryRoot);

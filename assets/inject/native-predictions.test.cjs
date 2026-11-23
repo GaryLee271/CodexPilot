@@ -639,10 +639,14 @@ async function runResourceCallSiteTests() {
 function channelHarness(settings = enabled, fastSettings = null) {
   const storage = new Map();
   const events = [];
+  const listeners = new Map();
+  const timers = new Map();
+  let nextTimer = 0;
   let reloads = 0;
   const document = {
     readyState: "loading", documentElement: null,
-    addEventListener() {}, removeEventListener() {},
+    addEventListener: (type, listener) => listeners.set(type, listener),
+    removeEventListener: (type, listener) => { if (listeners.get(type) === listener) listeners.delete(type); },
     createElement(tag) {
       const node = { tag, parentNode: null, children: [], relList: { supports: () => true } };
       node.appendChild = (child) => { node.children.push(child); child.parentNode = node; events.push([tag, child]); return child; };
@@ -656,7 +660,12 @@ function channelHarness(settings = enabled, fastSettings = null) {
     document, location: { href: "app://-/index.html", protocol: "app:", host: "-", origin: "app://-", reload: () => { reloads++; } },
     URL: class extends URL { static createObjectURL() { return `blob:app://-/module-${++blobs}`; } },
     Blob, HTMLScriptElement: { supports: () => true },
-    setTimeout: () => 1, clearTimeout() {},
+    setTimeout(callback, delay) {
+      const id = ++nextTimer;
+      timers.set(id, { callback, delay });
+      return id;
+    },
+    clearTimeout: (id) => timers.delete(id),
     sessionStorage: { getItem: (key) => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: (key) => storage.delete(key) },
   };
   const context = vm.createContext({ module: { exports: {} }, window, URL, Blob });
@@ -664,7 +673,19 @@ function channelHarness(settings = enabled, fastSettings = null) {
   vm.runInContext(helper, context);
   window.__codexPlusNativeFastUnlock.runtime.update(fastSettings ?? { enhancementsEnabled: true, codexAppNativeFastUnlock: false });
   window.__codexPlusNativePredictions.runtime.update(settings);
-  return { channel: window.__codexPlusNativeFastUnlock, predictions: window.__codexPlusNativePredictions, window, events, reloads: () => reloads };
+  const domContentLoaded = () => {
+    document.readyState = "interactive";
+    listeners.get("DOMContentLoaded")?.();
+  };
+  const expireTimers = () => {
+    for (const [id, { callback, delay }] of timers) {
+      assert.equal(delay, 30000);
+      timers.delete(id);
+      callback();
+    }
+  };
+  return { channel: window.__codexPlusNativeFastUnlock, predictions: window.__codexPlusNativePredictions,
+    window, context, events, domContentLoaded, expireTimers, reloads: () => reloads };
 }
 
 function moduleList(overrides = {}) {
@@ -674,10 +695,12 @@ function moduleList(overrides = {}) {
 async function runChannelTests() {
   // 数字 chunk 只读候选由后端提供，JS 仍须逐块校验并保持整体失败回退。
   {
-    const { channel } = channelHarness();
+    const env = channelHarness();
+    const { channel } = env;
     const chunks = Object.entries(currentFixtures).map(([name, source], index) => ({
+      name,
       url: `app://-/assets/async/${index + 1}.abc123.js`,
-      source: name === "app-initial" ? `${source};const accepted="cumberbatch-has-accepted-prediction-1";` : source,
+      source: name === "app-initial" ? `${source};const accepted="cumberbatch-has-accepted-prediction-1";` : `const factory = (${source});`,
     }));
     const options = { location: { protocol: "app:", host: "-" }, document: { scripts: [{ src: "app://-/assets/123.abc123.js" }] } };
     assert.equal((await channel.prepareDocumentModules(options)).diagnostics.reason, "rspack-assets-required");
@@ -688,7 +711,20 @@ async function runChannelTests() {
     assert.equal(prepared.modules.length, 4);
     assert.equal(fetched.length, 4, "不遍历成千上万个 Rspack 依赖");
     assert.equal(prepared.modules[0].url, chunks[0].url);
-    for (const item of prepared.modules) assert.equal(prepared.diagnostics.discovery[`predictions:${Object.keys(currentFixtures)[chunks.findIndex((chunk) => chunk.url === item.url)]}`], "content");
+    for (const item of prepared.modules) assert.equal(prepared.diagnostics.discovery[`predictions:${chunks.find((chunk) => chunk.url === item.url).name}`], "content");
+    // 新版启动只先执行实时预测块。可用性门控块延后加载时，已经正常启动的页面仍应保留补丁。
+    assert.equal(channel.installModules(prepared.modules, prepared.diagnostics).ok, true);
+    env.domContentLoaded();
+    const liveChunk = chunks.find((item) => item.name === "initialize-app-host-services");
+    const liveModule = prepared.modules.find((item) => item.url === liveChunk.url);
+    vm.runInContext(liveModule.patchedSource, env.context);
+    env.expireTimers();
+    assert.equal(env.reloads(), 0, "先执行实时预测块时不得误判启动超时");
+    assert.equal(env.window.__codexPlusNativeFastPatchState, "patched");
+    const firstPreload = env.events.find(([kind, node]) => kind === "html" && node.tag === "link")[1];
+    firstPreload.onerror();
+    assert.equal(env.reloads(), 1, "另一个模块确实预加载失败时仍然回退");
+    assert.equal(env.window.__codexPlusNativeFastModuleDiagnostics.reason, "module-preload-failed");
     const missing = await channel.prepareDocumentModules({ ...options, assetUrls: chunks.slice(1).map((item) => item.url), fetchText: async (url) => chunks.find((item) => item.url === url)?.source });
     assert.equal(missing.ok, false);
     assert.equal(missing.modules.length, 0);
@@ -705,7 +741,10 @@ async function runChannelTests() {
     assert.equal(prepared.modules.length, 4);
     assert.equal(prepared.modules[0].url, urls["app-initial"], "入口排在第一位");
     assert.ok(prepared.modules[0].patchedSource.includes('window.__codexPlusNativeFastCompiled="v1";'));
-    assert.ok(prepared.modules.slice(1).every((item) => !item.patchedSource.includes("__codexPlusNativeFastCompiled") && item.patchedSource.endsWith(`//# sourceURL=${item.url}\n`)));
+    const liveModule = prepared.modules.find((item) => item.url === urls["initialize-app-host-services"]);
+    assert.ok(liveModule.patchedSource.includes('window.__codexPlusNativeFastCompiled="v1";'));
+    assert.ok(prepared.modules.slice(1).filter((item) => item !== liveModule).every((item) =>
+      !item.patchedSource.includes("__codexPlusNativeFastCompiled") && item.patchedSource.endsWith(`//# sourceURL=${item.url}\n`)));
     assert.ok(prepared.modules.every((item) => item.patchedSource.includes("window.__codexPlusNativePredictions")));
   }
   // 任一目标块不符：整体放弃预测改写，不留半套补丁。
@@ -819,7 +858,7 @@ async function runChannelTests() {
     window.__codexPlusNativeFastCompiled = "v1";
     nodes[3].onerror();
     assert.equal(reloads(), 1);
-    assert.equal(channel.installModules(prepared.modules.slice(1)).ok, false, "缺少入口时不安装");
+    assert.equal(channel.installModules(prepared.modules.filter((item) => !item.patchedSource.includes("__codexPlusNativeFastCompiled"))).ok, false, "缺少入口时不安装");
   }
 }
 
