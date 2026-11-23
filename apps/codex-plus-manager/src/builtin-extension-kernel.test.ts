@@ -150,6 +150,14 @@ test("预测复用首段占位文字，清理时恢复原样", async () => {
   await Promise.resolve();
   assert.match(styles[0].textContent, /p\[data-placeholder\]::before.*继续/);
   assert.equal(editor.textContent, "");
+  const originalStyle = styles[0];
+  for (const draft of ["手动输入", " ", ""]) {
+    editor.textContent = draft;
+    editor.dispatchEvent(new Event("input"));
+    sync();
+    assert.equal(attributes.has("data-codex-plus-inline-hint"), draft === "");
+    assert.deepEqual(styles, [originalStyle], "删空后复用本回合建议");
+  }
   clear();
   assert.equal(styles.length, 0);
   assert.equal(attributes.size, 0);

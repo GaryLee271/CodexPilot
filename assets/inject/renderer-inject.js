@@ -8911,8 +8911,8 @@
     if (eventThread && eventThread !== thread) return;
     const hosts = codexPlusComposerActionHosts();
     const editor = hosts.length === 1 ? hosts[0].editor : null;
-    const draft = () => (editor?.value ?? editor?.textContent ?? "").trim();
-    if (!thread || session?.remote || !editor || draft()) {
+    const draft = () => editor?.value ?? editor?.textContent ?? "";
+    if (!thread || session?.remote || !editor || predictions.state.preference === false) {
       if (composerPrediction) clearComposerPrediction();
       return;
     }
@@ -8920,13 +8920,19 @@
     if (composerPrediction?.thread === thread && composerPrediction.editor === editor &&
         composerPrediction.model === model && (!turnId || turnId === composerPrediction.turnId)) return;
     clearComposerPrediction();
+    if (draft()) return;
     const current = { thread, editor, model, turnId, controller: new AbortController(), restorePlaceholder: null };
     composerPrediction = current;
     const signal = current.controller.signal;
     const valid = () => composerPrediction === current && !signal.aborted && editor.isConnected &&
       !draft() && predictions.runtime.relax("local") && predictions.state.preference !== false &&
       predictions.state.settings?.codexAppNativePredictionsModel === model && window.codexPlus?.currentSessionId() === thread;
-    editor.addEventListener("input", clearComposerPrediction, { once: true, signal });
+    // 已显示的建议保留到本回合结束使用；手动输入只切换可见性，删空直接恢复原文。
+    editor.addEventListener("input", () => {
+      if (!current.restorePlaceholder) { clearComposerPrediction(); return; }
+      if (valid()) editor.setAttribute("data-codex-plus-inline-hint", "");
+      else editor.removeAttribute("data-codex-plus-inline-hint");
+    }, { signal });
     Promise.resolve(predictions.composerSuggestion(thread, turnId, signal)).then((text) => {
       if (!text || !valid()) return;
       // 复用空段落原有的 ::before，灰字与光标共享起点和字号，也不会改变输入区高度。
@@ -8947,7 +8953,10 @@
         clearComposerPrediction();
         return true;
       };
-      paragraph.addEventListener("click", accept, { signal });
+      // 删空可能重建首段，将点击绑定在稳定的编辑器上。
+      editor.addEventListener("click", event => {
+        if (event.target === editor.querySelector(":scope > p[data-placeholder]")) accept();
+      }, { signal });
       editor.addEventListener("keydown", (event) => {
         if (event.key !== "Tab" || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey || event.isComposing || event.defaultPrevented) return;
         if (accept()) { event.preventDefault(); event.stopPropagation(); }
