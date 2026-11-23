@@ -143,9 +143,13 @@ test("预测复用首段占位文字，清理时恢复原样", async () => {
   const window = { codexPlus: { currentSession: () => ({ id: "local-test" }), currentSessionId: () => "local-test" },
     __codexPlusNativeFastUnlock: { needsComposerFallback: () => true },
     __codexPlusNativePredictions: { state: {}, runtime: { relax: () => true }, composerSuggestion: async () => "继续" } };
-  const { sync, clear } = new Function("window", "document", "CSS", "codexPlusComposerActionHosts",
+  const { sync, clear } = new Function("window", "document", "CSS", "codexPlusComposerActionHosts", "codexPlusInsertComposerText",
     `let composerPrediction; ${extract(source, "clearComposerPrediction")} ${extract(source, "syncComposerPrediction")}
-    return {sync:syncComposerPrediction, clear:clearComposerPrediction};`)(window, document, { escape: (s: string) => s }, () => [{ editor }]);
+    return {sync:syncComposerPrediction, clear:clearComposerPrediction};`)(window, document, { escape: (s: string) => s }, () => [{ editor }], (_target: unknown, text: string) => {
+      editor.textContent = text;
+      editor.dispatchEvent(new Event("input"));
+      return true;
+    });
   sync();
   await Promise.resolve();
   assert.match(styles[0].textContent, /p\[data-placeholder\]::before.*继续/);
@@ -157,6 +161,18 @@ test("预测复用首段占位文字，清理时恢复原样", async () => {
     sync();
     assert.equal(attributes.has("data-codex-plus-inline-hint"), draft === "");
     assert.deepEqual(styles, [originalStyle], "删空后复用本回合建议");
+  }
+  // 连续接受同一建议两次，每次删空后都应恢复本回合原来的提示。
+  for (let i = 0; i < 2; i++) {
+    const tab = Object.assign(new Event("keydown", { cancelable: true }), { key: "Tab" });
+    editor.dispatchEvent(tab);
+    assert.equal(tab.defaultPrevented, true);
+    assert.equal(editor.textContent, "继续");
+    assert.equal(attributes.size, 0);
+    editor.textContent = "";
+    editor.dispatchEvent(new Event("input"));
+    assert.equal(attributes.has("data-codex-plus-inline-hint"), true);
+    assert.deepEqual(styles, [originalStyle]);
   }
   clear();
   assert.equal(styles.length, 0);

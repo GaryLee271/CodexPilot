@@ -343,9 +343,8 @@
         style.remove();
       };
       const accept = () => {
-        if (!valid() || !codexPlusInsertComposerText(editor, text)) return false;
-        clearComposerPrediction();
-        return true;
+        // 接受只写入草稿。输入监听会隐藏灰字，删空后仍可接受同一条建议。
+        return valid() && codexPlusInsertComposerText(editor, text);
       };
       // 删空可能重建首段，将点击绑定在稳定的编辑器上。
       editor.addEventListener("click", event => {
