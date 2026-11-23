@@ -722,11 +722,12 @@
 
     function syncStatusWatch() {
       if (!statusApi || !items.length) return;
-      const context = statusApi.context?.();
+      const context = statusApi.context?.() || statusContext;
       if (!context) return;
       const ids = items.slice(0, CPL_MAX_ITEMS).map(session => session.id);
       const key = ids.join(',');
-      if (key === statusIds && context === statusContext) return;
+      // 每次探测都会生成上下文包装对象；底层订阅和语言环境相同时继续使用原监听。
+      if (key === statusIds && context.scope === statusContext?.scope && context.intl?.value === statusContext?.intl?.value) return;
       const generation = ++statusGeneration;
       statusWatch?.(); statusWatch = null;
       statusIds = key; statusContext = context;

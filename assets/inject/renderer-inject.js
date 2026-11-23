@@ -3433,35 +3433,46 @@
       static getDerivedStateFromError() { return { failed: true }; }
       render() { return this.state.failed ? this.props.fallback || null : this.props.children; }
     }
-    return {
-      // 每轮从当前 shell 查找 scope；不缓存侧栏 DOM 或依赖项目是否展开。
-      context() {
-        const anchor = document.querySelector('[data-app-shell-active-page="true"]')
-          || document.querySelector('[data-app-shell-main-surface]');
-        const key = anchor && Object.getOwnPropertyNames(anchor).find(name => name.startsWith('__reactFiber$'));
-        let current = anchor?.[key], root = current;
-        for (let depth = 0; root?.return && depth < 200; depth++) root = root.return;
-        if (current?.alternate && root?.stateNode?.current && root.stateNode.current !== root) current = current.alternate;
-        let scope = null, intl = null, appScope = null;
-        const providers = [], seen = new Set();
-        for (let fiber = current, depth = 0; fiber && depth < 180; fiber = fiber.return, depth++) {
-          // 只读已提交的 hook ref，不调用原生 hook，也不复制其内部 store 实现。
-          for (let hook = fiber.memoizedState, i = 0; !scope && hook && i < 80; hook = hook.next, i++) {
-            const value = hook.memoizedState?.current;
-            if (value?.scope === scopeToken && typeof value.get === 'function' && typeof value.watch === 'function') scope = value;
-          }
-          const value = fiber.memoizedProps?.value;
-          // 菜单组件还依赖导航、弹窗等上下文，沿当前已提交的主树复用最近一层 provider。
-          const provider = fiber.type, token = provider?._context || provider;
-          if ([Symbol.for('react.context'), Symbol.for('react.provider')].includes(provider?.$$typeof)
-            && fiber.memoizedProps && Object.hasOwn(fiber.memoizedProps, 'value') && !seen.has(token)) {
-            seen.add(token); providers.push({ Provider: provider, value });
-          }
-          if (!intl && typeof value?.formatMessage === 'function' && typeof value.locale === 'string') intl = { Provider: fiber.type, value };
-          // 原生项目图标自身订阅图标/颜色设置，需要与主树共用 AppScope，而非复制其配置。
-          if (!appScope && fiber.type?.displayName === scopeToken.__scopeBrand && value instanceof Map && value.has(scopeToken.id)) appScope = { Provider: fiber.type, value };
+    function contextFromAnchor(anchor) {
+      const key = anchor && Object.getOwnPropertyNames(anchor).find(name => name.startsWith('__reactFiber$'));
+      let current = anchor?.[key], root = current;
+      for (let depth = 0; root?.return && depth < 200; depth++) root = root.return;
+      if (current?.alternate && root?.stateNode?.current && root.stateNode.current !== root) current = current.alternate;
+      let scope = null, intl = null, appScope = null;
+      const providers = [], seen = new Set();
+      for (let fiber = current, depth = 0; fiber && depth < 180; fiber = fiber.return, depth++) {
+        // 只读已提交的 hook ref，不调用原生 hook，也不复制其内部 store 实现。
+        for (let hook = fiber.memoizedState, i = 0; !scope && hook && i < 80; hook = hook.next, i++) {
+          const value = hook.memoizedState?.current;
+          if (value?.scope === scopeToken && typeof value.get === 'function' && typeof value.watch === 'function') scope = value;
         }
-        return scope && intl ? { scope, intl, appScope, providers } : null;
+        const value = fiber.memoizedProps?.value;
+        // 菜单组件还依赖导航、弹窗等上下文，沿当前已提交的主树复用最近一层 provider。
+        const provider = fiber.type, token = provider?._context || provider;
+        if ([Symbol.for('react.context'), Symbol.for('react.provider')].includes(provider?.$$typeof)
+          && fiber.memoizedProps && Object.hasOwn(fiber.memoizedProps, 'value') && !seen.has(token)) {
+          seen.add(token); providers.push({ Provider: provider, value });
+        }
+        if (!intl && typeof value?.formatMessage === 'function' && typeof value.locale === 'string') intl = { Provider: fiber.type, value };
+        // 原生项目图标自身订阅图标/颜色设置，需要与主树共用 AppScope，而非复制其配置。
+        if (!appScope && fiber.type?.displayName === scopeToken.__scopeBrand && value instanceof Map && value.has(scopeToken.id)) appScope = { Provider: fiber.type, value };
+      }
+      return scope && intl ? { scope, intl, appScope, providers } : null;
+    }
+    return {
+      context() {
+        // 切页时 Chat 页与 Work 页的 React 祖先不同；侧栏仍持有本窗口的会话订阅。
+        const anchors = new Set([
+          document.querySelector('[data-app-shell-active-page="true"]'),
+          document.querySelector('[data-app-action-sidebar-thread-id]'),
+          document.querySelector('[data-app-shell-main-surface]'),
+        ]);
+        for (const anchor of anchors) {
+          if (!anchor) continue;
+          const context = contextFromAnchor(anchor);
+          if (context) return context;
+        }
+        return null;
       },
       canOpenThreadMenu(context, id) {
         return threadRowFactories.length === 1 && !!context?.providers?.length && !!localRow(context, id);
@@ -3801,7 +3812,9 @@
       #codex-plus-conversation-tabs .cpt-status{display:inline-flex;align-items:center;justify-content:center;flex:none;color:var(--cpt-fg)}
       #codex-plus-conversation-tabs .cpt-status[hidden]{display:none}
       #codex-plus-conversation-tabs .cpt-item:has(.cpt-status[data-state="input"]),#codex-plus-conversation-tabs .cpt-item:has(.cpt-status[data-state="approval"]){min-width:156px}
-      #codex-plus-conversation-tabs .cpt-dot{flex:none;width:6px;height:6px;border-radius:50%;background:var(--color-text-info-ghost-hover,#0169cc)}
+      #codex-plus-conversation-tabs .cpt-dot{flex:none;width:12px;height:12px;box-sizing:border-box;border:2px solid currentColor;border-inline-end-color:transparent;border-radius:50%;animation:cpt-working-spin .8s linear infinite}
+      @keyframes cpt-working-spin{to{transform:rotate(360deg)}}
+      @media(prefers-reduced-motion:reduce){#codex-plus-conversation-tabs .cpt-dot{animation:none}}
       #codex-plus-conversation-tabs .cpt-dot[hidden]{display:none}
       #codex-plus-conversation-tabs .cpt-close{flex:none;display:grid;place-items:center;width:20px;height:20px;border-radius:6px;color:var(--cpt-muted);opacity:0;transition:opacity .15s,background-color .15s}
       #codex-plus-conversation-tabs .cpt-item:hover .cpt-close,#codex-plus-conversation-tabs .cpt-active .cpt-close,#codex-plus-conversation-tabs .cpt-close:focus-visible{opacity:1}
@@ -3971,7 +3984,8 @@
     }
     function syncStatusWatch() {
       if (!statusApi) return;
-      const context = statusApi.context();
+      // 切页过渡期间沿用仍在推送的订阅，拿到新上下文后再换绑。
+      const context = statusApi.context() || statusContext;
       const ids = tabs.map(tab => tab.id).sort().join(',');
       if (context?.scope.node === statusContext?.scope.node && context?.scope === statusContext?.scope && ids === statusIds) {
         statusContext = context; return;
@@ -5023,11 +5037,12 @@
 
     function syncStatusWatch() {
       if (!statusApi || !items.length) return;
-      const context = statusApi.context?.();
+      const context = statusApi.context?.() || statusContext;
       if (!context) return;
       const ids = items.slice(0, CPL_MAX_ITEMS).map(session => session.id);
       const key = ids.join(',');
-      if (key === statusIds && context === statusContext) return;
+      // 每次探测都会生成上下文包装对象；底层订阅和语言环境相同时继续使用原监听。
+      if (key === statusIds && context.scope === statusContext?.scope && context.intl?.value === statusContext?.intl?.value) return;
       const generation = ++statusGeneration;
       statusWatch?.(); statusWatch = null;
       statusIds = key; statusContext = context;

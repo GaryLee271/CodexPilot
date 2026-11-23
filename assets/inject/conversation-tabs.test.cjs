@@ -379,6 +379,16 @@ test("原生状态实时订阅：后台、折叠和行卸载仍同步，切换�
   assert.deepEqual(h.saved().map(tab => Object.keys(tab).sort()), [["id", "title"], ["id", "title"]]);
 });
 
+test("切页时上下文暂缺，已有订阅继续区分处理中和未读", async () => {
+  const native = nativeStatus(), h = fixture({ nativeStatus: native.api });
+  await Promise.resolve(); h.open(1);
+  native.api.context = () => null;
+  native.set(ids[0], "active"); native.set(ids[1], "unread"); h.refresh(); h.flush();
+  assert.equal(native.watchers.size, 1);
+  assert.deepEqual(h.items().map(item => item.querySelector(".cpt-status").nativeState), ["active", "unread"]);
+  assert.equal(h.items()[0].querySelector(".cpt-dot").hidden, true);
+});
+
 test("状态订阅与原生图标随关闭、开关和热重注入释放，迟到发现不复活旧实例", async () => {
   const native = nativeStatus(), h = fixture({ nativeStatus: native.api });
   await Promise.resolve(); h.open(1); h.close(1); h.refresh();

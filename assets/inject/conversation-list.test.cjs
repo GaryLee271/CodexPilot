@@ -142,9 +142,11 @@ function fixture(options = {}) {
       });
     },
   };
+  let watchCount = 0;
   const nativeStatus = options.nativeStatus ? {
     context: () => ({}),
     watch: (context, ids, changed, projectsChanged) => {
+      watchCount++;
       changed(new Map([[IDS[0], "active"]]));
       projectsChanged(new Map([[IDS[0], { id: "p-a", name: "Alpha 原生", kind: "local" }]]));
       return () => {};
@@ -163,6 +165,7 @@ function fixture(options = {}) {
   const flush = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
   return {
     context, window, document, actions, bridgeCalls, states, projects, rows, aside, scroll, header, search, flush,
+    watches: () => watchCount,
     entry: () => document.querySelector(`#${ENTRY_ID}`),
     panel: () => document.querySelector(".cpl-panel"),
     sync: () => context.syncCodexPlusConversationList(),
@@ -287,6 +290,8 @@ test("后端失败只提示；原生适配可用时接管状态与项目名", as
   const h = fixture({ nativeStatus: true });
   h.toggle();
   await h.flush();
+  h.sync(); h.sync();
+  assert.equal(h.watches(), 1, "同一窗口反复刷新列表应复用已有订阅");
   assert.deepEqual(h.states, ["active"]);
   assert.equal(h.names()[0], "Alpha 原生");
   assert.equal(h.items()[0].querySelector(".cpl-status").hidden, false);

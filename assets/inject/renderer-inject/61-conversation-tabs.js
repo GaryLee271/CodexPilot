@@ -201,7 +201,9 @@
       #codex-plus-conversation-tabs .cpt-status{display:inline-flex;align-items:center;justify-content:center;flex:none;color:var(--cpt-fg)}
       #codex-plus-conversation-tabs .cpt-status[hidden]{display:none}
       #codex-plus-conversation-tabs .cpt-item:has(.cpt-status[data-state="input"]),#codex-plus-conversation-tabs .cpt-item:has(.cpt-status[data-state="approval"]){min-width:156px}
-      #codex-plus-conversation-tabs .cpt-dot{flex:none;width:6px;height:6px;border-radius:50%;background:var(--color-text-info-ghost-hover,#0169cc)}
+      #codex-plus-conversation-tabs .cpt-dot{flex:none;width:12px;height:12px;box-sizing:border-box;border:2px solid currentColor;border-inline-end-color:transparent;border-radius:50%;animation:cpt-working-spin .8s linear infinite}
+      @keyframes cpt-working-spin{to{transform:rotate(360deg)}}
+      @media(prefers-reduced-motion:reduce){#codex-plus-conversation-tabs .cpt-dot{animation:none}}
       #codex-plus-conversation-tabs .cpt-dot[hidden]{display:none}
       #codex-plus-conversation-tabs .cpt-close{flex:none;display:grid;place-items:center;width:20px;height:20px;border-radius:6px;color:var(--cpt-muted);opacity:0;transition:opacity .15s,background-color .15s}
       #codex-plus-conversation-tabs .cpt-item:hover .cpt-close,#codex-plus-conversation-tabs .cpt-active .cpt-close,#codex-plus-conversation-tabs .cpt-close:focus-visible{opacity:1}
@@ -371,7 +373,8 @@
     }
     function syncStatusWatch() {
       if (!statusApi) return;
-      const context = statusApi.context();
+      // 切页过渡期间沿用仍在推送的订阅，拿到新上下文后再换绑。
+      const context = statusApi.context() || statusContext;
       const ids = tabs.map(tab => tab.id).sort().join(',');
       if (context?.scope.node === statusContext?.scope.node && context?.scope === statusContext?.scope && ids === statusIds) {
         statusContext = context; return;
